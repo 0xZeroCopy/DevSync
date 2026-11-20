@@ -5,6 +5,22 @@ class LockManager {
     this.nextLockId = 1;
   }
 
+  getState() {
+    const now = Date.now();
+    const activeLocks = [];
+    for (const [symbolPath, lock] of this.locks.entries()) {
+      if (lock.expiresAt <= now) {
+        this.locks.delete(symbolPath);
+        continue;
+      }
+      activeLocks.push(lock);
+    }
+    return {
+      type: "STATE_SNAPSHOT",
+      locks: activeLocks,
+    };
+  }
+
   assignLock(request, now) {
     const lockId = `lock_${this.nextLockId++}`;
     let lock = {
@@ -24,6 +40,20 @@ class LockManager {
   acquireLock(request) {
     const currentTime = Date.now();
     const lockDetails = this.locks.get(request.symbolPath);
+    for (const [existingSymbol, lock] of this.locks.entries()) {
+      if (
+        lock.ownerId === request.ownerId &&
+        existingSymbol !== request.symbolPath
+      ) {
+        return {
+          type: "LOCK_DENIED",
+          symbolPath: request.symbolPath,
+          reason: "ALREADY_HOLDING_LOCK",
+          activeSymbol: existingSymbol,
+          holder: lock,
+        };
+      }
+    }
     if (!lockDetails || lockDetails.expiresAt < currentTime) {
       const newLock = this.assignLock(request, currentTime);
       return {
