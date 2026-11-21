@@ -63,4 +63,26 @@ const res3 = lm.acquireLock({
 });
 assert.strictEqual(res3.type, "LOCK_ACQUIRED");
 
+// 7. Snapshot includes symbolPath and filePath
+const snap = lm.getState();
+assert.strictEqual(snap.locks[0].symbolPath, "src/index.js#main");
+assert.strictEqual(snap.locks[0].filePath, "src/index.js");
+
+// 8. Releasing a lock that doesn't exist -> LOCK_RELEASE_FAILED / NOT_FOUND
+const relMissing = lm.releaseLock({ symbolPath: "nope", ownerId: "userB" });
+assert.strictEqual(relMissing.type, "LOCK_RELEASE_FAILED");
+assert.strictEqual(relMissing.reason, "NOT_FOUND");
+
+// 9. Re-acquiring own lock updates intent, keeps the same lockId
+const reacq = lm.acquireLock({
+  filePath: "src/index.js",
+  symbolPath: "src/index.js#main",
+  ownerId: "userB",
+  ownerName: "Bob",
+  intent: "new intent",
+});
+assert.strictEqual(reacq.type, "LOCK_ACQUIRED");
+assert.strictEqual(reacq.intent, "new intent");
+assert.strictEqual(reacq.lockId, res3.lockId);
+
 console.log("All LockManager checks passed!");
