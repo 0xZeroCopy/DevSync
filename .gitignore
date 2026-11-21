@@ -1,18 +1,45 @@
 # Dependencies
 node_modules/
+*/node_modules/
 
 # Environment variables & secrets
 .env
 .env.*
 !.env.example
 
-# Logs & OS clutter
+# AI agents & assistants metadata
+.agents/
+.gemini/
+.claude/
+.cursor/
+
+# Editor & IDE configs
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.swp
+*~
+
+# Logs & debugging
 *.log
 npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# OS clutter
 .DS_Store
 Thumbs.db
+desktop.ini
 
 # Coverage & build outputs
 coverage/
 dist/
+*/dist/
 build/
+*.tsbuildinfo
+.temp/
+.tmp/

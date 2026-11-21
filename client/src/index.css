@@ -1,0 +1,81 @@
+@import "tailwindcss";
+
+@layer base {
+  :root {
+    --font-mono: "JetBrains Mono", monospace;
+    --font-sans: "IBM Plex Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+
+    /* OLED Dark Mode Palette Tokens */
+    --color-bg: #0f172a;
+    --color-surface: #1e293b;
+    --color-surface-hover: #27354f;
+    --color-card: #141e33;
+    --color-border: #334155;
+    --color-border-subtle: #1e293b;
+    --color-muted: #94a3b8;
+    
+    /* Semantic Status Tokens */
+    --color-self-lock: #22c55e;
+    --color-other-lock: #f59e0b;
+    --color-collision: #ef4444;
+    --color-intent-ring: #6366f1;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: #f8fafc;
+    font-family: var(--font-sans);
+    overflow-x: hidden;
+  }
+
+  code, pre, .font-mono {
+    font-family: var(--font-mono);
+  }
+}
+
+/* Custom Scrollbar for dense IDE feels */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: #0f172a;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #334155;
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: #475569;
+}
+
+@keyframes pulseGlow {
+  0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px rgba(34, 197, 94, 0.6)); }
+  50% { opacity: 0.6; filter: drop-shadow(0 0 2px rgba(34, 197, 94, 0.2)); }
+}
+
+.animate-pulse-glow {
+  animation: pulseGlow 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Monaco Gutter Lock Glyphs */
+.monaco-glyph-lock-mine {
+  background: #22c55e;
+  border-radius: 50%;
+  margin-left: 5px;
+  width: 8px !important;
+  height: 8px !important;
+  box-shadow: 0 0 6px rgba(34, 197, 94, 0.8);
+}
+
+.monaco-glyph-lock-peer {
+  background: #f59e0b;
+  border-radius: 50%;
+  margin-left: 5px;
+  width: 8px !important;
+  height: 8px !important;
+  box-shadow: 0 0 6px rgba(245, 158, 11, 0.8);
+}
