@@ -7,8 +7,7 @@ function sendJson(socket, payload) {
   }
 }
 
-function startServer(port = Number(process.env.PORT) || 8080) {
-  const lockManager = new LockManager();
+function startServer(port = Number(process.env.PORT) || 8080, leaseMs = 30000) {
   const wss = new WebSocketServer({ port });
 
   function broadcast(payload, socket = null) {
@@ -18,9 +17,17 @@ function startServer(port = Number(process.env.PORT) || 8080) {
     }
   }
 
+  const lockManager = new LockManager(leaseMs, (msg) => broadcast(msg));
+
+  const sweepTimer = setInterval(() => {
+    lockManager.removeExpired();
+  }, 1000);
+
+  wss.on("close", () => {
+    clearInterval(sweepTimer);
+  });
+
   wss.on("connection", (socket) => {
-    let activeSymbol = null;
-    let activeOwnerId = null;
     sendJson(socket, lockManager.getState());
     socket.on("message", (rawData) => {
       let msg;
@@ -40,8 +47,6 @@ function startServer(port = Number(process.env.PORT) || 8080) {
         case "ACQUIRE_LOCK":
           response = lockManager.acquireLock(msg);
           if (response.type == "LOCK_ACQUIRED") {
-            activeSymbol = msg.symbolPath;
-            activeOwnerId = msg.ownerId;
             broadcast(response, socket);
           }
           break;
@@ -51,7 +56,6 @@ function startServer(port = Number(process.env.PORT) || 8080) {
         case "RELEASE_LOCK":
           response = lockManager.releaseLock(msg);
           if (response.type == "LOCK_RELEASED") {
-            activeSymbol = null;
             broadcast(response, socket);
           }
           break;
@@ -67,18 +71,6 @@ function startServer(port = Number(process.env.PORT) || 8080) {
       }
 
       sendJson(socket, response);
-    });
-    socket.on("close", () => {
-      const currentLock = lockManager.locks.get(activeSymbol);
-      if (currentLock && currentLock.ownerId == activeOwnerId) {
-        lockManager.locks.delete(activeSymbol);
-        broadcast({
-          type: "LOCK_RELEASED",
-          symbolPath: activeSymbol,
-          ownerId: activeOwnerId,
-          reason: "DISCONNECTED",
-        });
-      }
     });
   });
   wss.on("listening", () => {
