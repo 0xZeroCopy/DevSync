@@ -171,6 +171,7 @@ export function useDevSyncSocket(wsUrl = "ws://localhost:8080", currentUser) {
   // Public helper methods
   const acquireLock = useCallback(
     (file, symbol, intent) => {
+      if (!currentUser) return;
       setLastError(null);
       send({
         type: "ACQUIRE_LOCK",
@@ -188,6 +189,7 @@ export function useDevSyncSocket(wsUrl = "ws://localhost:8080", currentUser) {
 
   const releaseLock = useCallback(
     (symbolPath) => {
+      if (!currentUser) return;
       setLastError(null);
       send({
         type: "RELEASE_LOCK",
@@ -200,6 +202,7 @@ export function useDevSyncSocket(wsUrl = "ws://localhost:8080", currentUser) {
 
   const requestHandover = useCallback(
     (lock, note) => {
+      if (!currentUser) return;
       setLastError(null);
       send({
         type: "HANDOVER_REQUEST",
