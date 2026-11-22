@@ -398,35 +398,57 @@ export function App() {
   // If viewing Projects Dashboard (default destination after signup / login!)
   if (view === "dashboard") {
     return (
-      <Dashboard
-        currentUser={currentUser}
-        projects={projects}
-        onCreateProject={handleCreateProject}
-        onInviteTeammate={handleInviteTeammate}
-        invitations={invitations}
-        onAcceptInvite={handleAcceptInvite}
-        onDeclineInvite={handleDeclineInvite}
-        onOpenWorkspace={handleOpenWorkspace}
-        onNavigateProfile={() => setView("profile")}
-        onLogout={handleLogout}
-        isConnected={isConnected}
-      />
+      <>
+        <IncomingHandoverBanner
+          alert={handoverAlert}
+          onAccept={(requestId, symbolPath, note) => {
+            respondHandover(requestId, symbolPath, true, note);
+          }}
+          onDecline={(requestId, symbolPath) => {
+            respondHandover(requestId, symbolPath, false);
+          }}
+        />
+        <Dashboard
+          currentUser={currentUser}
+          projects={projects}
+          onCreateProject={handleCreateProject}
+          onInviteTeammate={handleInviteTeammate}
+          invitations={invitations}
+          onAcceptInvite={handleAcceptInvite}
+          onDeclineInvite={handleDeclineInvite}
+          onOpenWorkspace={handleOpenWorkspace}
+          onNavigateProfile={() => setView("profile")}
+          onLogout={handleLogout}
+          isConnected={isConnected}
+        />
+      </>
     );
   }
 
   // If viewing Profile Screen
   if (view === "profile") {
     return (
-      <ProfilePage
-        currentUser={currentUser}
-        onUpdateUser={handleUpdateUser}
-        onBackToWorkspace={() => setView("workspace")}
-        onNavigateDashboard={() => setView("dashboard")}
-        onLogout={handleLogout}
-        locks={locks}
-        onReleaseLock={releaseLock}
-        isConnected={isConnected}
-      />
+      <>
+        <IncomingHandoverBanner
+          alert={handoverAlert}
+          onAccept={(requestId, symbolPath, note) => {
+            respondHandover(requestId, symbolPath, true, note);
+          }}
+          onDecline={(requestId, symbolPath) => {
+            respondHandover(requestId, symbolPath, false);
+          }}
+        />
+        <ProfilePage
+          currentUser={currentUser}
+          onUpdateUser={handleUpdateUser}
+          onBackToWorkspace={() => setView("workspace")}
+          onNavigateDashboard={() => setView("dashboard")}
+          onLogout={handleLogout}
+          locks={locks}
+          onReleaseLock={releaseLock}
+          isConnected={isConnected}
+        />
+      </>
     );
   }
 

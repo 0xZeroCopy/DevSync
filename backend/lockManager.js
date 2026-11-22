@@ -1,7 +1,9 @@
 class LockManager {
-  constructor(leaseDurationMs = 30000, onExpire = () => {}) {
+  constructor(leaseDurationMs = 30000, onExpire = () => {}, handoverTimeoutMs = leaseDurationMs) {
     this.locks = new Map();
+    this.pendingHandovers = new Map();
     this.leaseDurationMs = leaseDurationMs;
+    this.handoverTimeoutMs = handoverTimeoutMs;
     this.nextLockId = 1;
     this.onExpire = onExpire;
   }
@@ -17,6 +19,20 @@ class LockManager {
           ownerId: lock.ownerId,
           reason: "EXPIRED",
           filePath: lock.filePath,
+        });
+      }
+    }
+
+    for (const [requestId, pending] of this.pendingHandovers) {
+      if (pending.expiresAt <= now) {
+        this.pendingHandovers.delete(requestId);
+        this.onExpire({
+          type: "HANDOVER_FAILED",
+          requestId,
+          symbolPath: pending.symbolPath,
+          fromUserId: pending.fromUserId,
+          toUserId: pending.toUserId,
+          reason: "REQUEST_EXPIRED",
         });
       }
     }
@@ -180,6 +196,189 @@ class LockManager {
         reason: "RELEASED",
       };
     }
+  }
+
+  requestHandover(request) {
+    this.removeExpired();
+    const lockDetails = this.locks.get(request.symbolPath);
+
+    if (!lockDetails) {
+      return {
+        type: "HANDOVER_FAILED",
+        requestId: request.requestId,
+        symbolPath: request.symbolPath,
+        fromUserId: request.fromUserId,
+        reason: "NOT_LOCKED",
+      };
+    }
+
+    if (request.toUserId && lockDetails.ownerId !== request.toUserId) {
+      return {
+        type: "HANDOVER_FAILED",
+        requestId: request.requestId,
+        symbolPath: request.symbolPath,
+        fromUserId: request.fromUserId,
+        reason: "HOLDER_MISMATCH",
+      };
+    }
+
+    if (lockDetails.ownerId === request.fromUserId) {
+      return {
+        type: "HANDOVER_FAILED",
+        requestId: request.requestId,
+        symbolPath: request.symbolPath,
+        fromUserId: request.fromUserId,
+        reason: "ALREADY_OWNER",
+      };
+    }
+
+    const pending = {
+      requestId: request.requestId || `ho_${Date.now()}`,
+      symbolPath: request.symbolPath,
+      filePath: request.filePath || lockDetails.filePath,
+      fromUserId: request.fromUserId,
+      fromUserName: request.fromUserName,
+      toUserId: lockDetails.ownerId,
+      toUserName: lockDetails.ownerName,
+      note: request.note || "",
+      requestedAt: Date.now(),
+      expiresAt: Date.now() + this.handoverTimeoutMs,
+    };
+
+    this.pendingHandovers.set(pending.requestId, pending);
+
+    return {
+      type: "HANDOVER_REQUEST",
+      ...pending,
+    };
+  }
+
+  respondHandover(response) {
+    const pending = this.pendingHandovers.get(response.requestId);
+    const now = Date.now();
+    this.removeExpired();
+
+    if (pending && pending.expiresAt <= now) {
+      return {
+        type: "HANDOVER_FAILED",
+        requestId: response.requestId,
+        symbolPath: response.symbolPath,
+        fromUserId: pending.fromUserId,
+        toUserId: pending.toUserId,
+        reason: "REQUEST_EXPIRED",
+      };
+    }
+
+    if (!pending) {
+      return {
+        type: "HANDOVER_FAILED",
+        requestId: response.requestId,
+        symbolPath: response.symbolPath,
+        reason: "NOT_FOUND",
+      };
+    }
+
+    if (response.symbolPath !== pending.symbolPath) {
+      return {
+        type: "HANDOVER_FAILED",
+        requestId: response.requestId,
+        symbolPath: response.symbolPath,
+        fromUserId: pending.fromUserId,
+        toUserId: pending.toUserId,
+        reason: "SYMBOL_MISMATCH",
+      };
+    }
+
+    if (response.responderUserId !== pending.toUserId) {
+      return {
+        type: "HANDOVER_FAILED",
+        requestId: response.requestId,
+        symbolPath: response.symbolPath,
+        fromUserId: pending.fromUserId,
+        toUserId: pending.toUserId,
+        reason: "NOT_RECIPIENT",
+      };
+    }
+
+    const lockDetails = this.locks.get(pending.symbolPath);
+    if (!lockDetails) {
+      this.pendingHandovers.delete(response.requestId);
+      return {
+        type: "HANDOVER_FAILED",
+        requestId: response.requestId,
+        symbolPath: response.symbolPath,
+        fromUserId: pending.fromUserId,
+        toUserId: pending.toUserId,
+        reason: "LOCK_EXPIRED",
+      };
+    }
+
+    if (lockDetails.ownerId !== pending.toUserId) {
+      this.pendingHandovers.delete(response.requestId);
+      return {
+        type: "HANDOVER_FAILED",
+        requestId: response.requestId,
+        symbolPath: response.symbolPath,
+        fromUserId: pending.fromUserId,
+        toUserId: pending.toUserId,
+        reason: "HOLDER_CHANGED",
+      };
+    }
+
+    this.pendingHandovers.delete(response.requestId);
+
+    if (response.accepted) {
+      // If the recipient already holds another lock, release it first (1-lock per user rule)
+      for (const [existingSymbol, lk] of this.locks.entries()) {
+        if (lk.ownerId === pending.fromUserId && existingSymbol !== pending.symbolPath) {
+          this.locks.delete(existingSymbol);
+          this.onExpire({
+            type: "LOCK_RELEASED",
+            symbolPath: existingSymbol,
+            ownerId: pending.fromUserId,
+            reason: "RELEASED",
+            filePath: lk.filePath,
+          });
+        }
+      }
+
+      const currentTime = Date.now();
+      lockDetails.ownerId = pending.fromUserId;
+      lockDetails.ownerName = pending.fromUserName;
+      lockDetails.intent = response.nextIntent || pending.note || lockDetails.intent;
+      lockDetails.lastRenewedAt = currentTime;
+      lockDetails.expiresAt = currentTime + this.leaseDurationMs;
+
+      return {
+        type: "HANDOVER_ACCEPTED",
+        requestId: response.requestId,
+        symbolPath: response.symbolPath,
+        fromUserId: pending.fromUserId,
+        fromUserName: pending.fromUserName,
+        toUserId: pending.toUserId,
+        lock: {
+          type: "LOCK_ACQUIRED",
+          lockId: lockDetails.lockId,
+          filePath: lockDetails.filePath,
+          symbolPath: lockDetails.symbolPath,
+          startOffset: lockDetails.startOffset,
+          endOffset: lockDetails.endOffset,
+          ownerId: lockDetails.ownerId,
+          ownerName: lockDetails.ownerName,
+          intent: lockDetails.intent,
+          expiresAt: lockDetails.expiresAt,
+        },
+      };
+    }
+
+    return {
+      type: "HANDOVER_DECLINED",
+      requestId: response.requestId,
+      symbolPath: response.symbolPath,
+      fromUserId: pending.fromUserId,
+      toUserId: pending.toUserId,
+      reason: "DECLINED_BY_OWNER",
+    };
   }
 }
 
