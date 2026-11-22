@@ -161,6 +161,12 @@ module.exports = { main, broadcast };
 
 export const MOCK_DEVELOPERS = [
   {
+    id: "673f9a1c8e2b4d0012a34b59",
+    name: "Malika",
+    role: "Developer",
+    avatarColor: "#8B5CF6", // Purple
+  },
+  {
     id: "673f9a1c8e2b4d0012a34b56",
     name: "Trisha",
     role: "Lead Backend",

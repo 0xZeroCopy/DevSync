@@ -1,16 +1,42 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { Header } from "./components/Header";
 import { SymbolTree } from "./components/SymbolTree";
 import { CodeCanvas } from "./components/CodeCanvas";
 import { HandoverModal, IncomingHandoverBanner } from "./components/HandoverModal";
 import { BottomDrawer } from "./components/EventAuditDrawer";
 import { CallGraphAlert } from "./components/CallGraphAlert";
+import { AuthPage } from "./components/AuthPage";
+import { ProfilePage } from "./components/ProfilePage";
 import { useDevSyncSocket } from "./hooks/useDevSyncSocket";
 import { MOCK_PROJECT_FILES, MOCK_DEVELOPERS } from "./data/mockFiles";
 import { AlertCircle, X } from "lucide-react";
 
 export function App() {
-  const [currentUser, setCurrentUser] = useState(MOCK_DEVELOPERS[1]); // Default to Tanmay
+  // Authentication & View Routing State
+  const [currentUser, setCurrentUser] = useState(() => {
+    try {
+      const saved = localStorage.getItem("devsync_auth_user");
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {
+      // ignore
+    }
+    return null; // Not logged in initially -> forces Signup/Login first
+  });
+
+  const [view, setView] = useState(() => {
+    try {
+      const saved = localStorage.getItem("devsync_auth_user");
+      if (saved) return "workspace";
+    } catch {
+      // ignore
+    }
+    return "auth"; // First page to open is auth
+  });
+
+  const [authMode, setAuthMode] = useState("signup"); // Default to signup first
+
   const [selectedFile, setSelectedFile] = useState(MOCK_PROJECT_FILES[0]);
   const [selectedSymbol, setSelectedSymbol] = useState(MOCK_PROJECT_FILES[0].symbols[0]);
 
@@ -18,6 +44,32 @@ export function App() {
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState("ACQUIRE"); // "ACQUIRE" | "REQUEST_HANDOVER"
   const [targetLock, setTargetLock] = useState(null);
+
+  // Sync user updates to localStorage
+  const handleUpdateUser = (updated) => {
+    setCurrentUser(updated);
+    try {
+      localStorage.setItem("devsync_auth_user", JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleAuthSuccess = (authenticatedUser) => {
+    handleUpdateUser(authenticatedUser);
+    setView("workspace");
+  };
+
+  const handleLogout = () => {
+    try {
+      localStorage.removeItem("devsync_auth_user");
+    } catch {
+      // ignore
+    }
+    setCurrentUser(null);
+    setAuthMode("login");
+    setView("auth");
+  };
 
   // WebSocket custom hook
   const {
@@ -59,15 +111,48 @@ export function App() {
     }
   };
 
+  // If not authenticated or explicitly navigating to auth, lock to Auth screen
+  if (!currentUser || view === "auth") {
+    return (
+      <AuthPage
+        initialMode={authMode}
+        onAuthSuccess={handleAuthSuccess}
+        onBackToWorkspace={currentUser && view === "auth" ? () => setView("workspace") : null}
+      />
+    );
+  }
+
+  // If viewing Profile Screen
+  if (view === "profile") {
+    return (
+      <ProfilePage
+        currentUser={currentUser}
+        onUpdateUser={handleUpdateUser}
+        onBackToWorkspace={() => setView("workspace")}
+        onLogout={handleLogout}
+        locks={locks}
+        onReleaseLock={releaseLock}
+        isConnected={isConnected}
+      />
+    );
+  }
+
   return (
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0F172A] text-slate-100 font-sans">
       {/* 1. Global Header with WebSocket status, lock telemetry, and developer switcher */}
       <Header
         isConnected={isConnected}
         currentUser={currentUser}
-        onSelectUser={setCurrentUser}
+        onSelectUser={handleUpdateUser}
         locks={locks}
         onRefresh={refreshState}
+        onNavigateProfile={() => setView("profile")}
+        onNavigateAuth={(mode) => {
+          setAuthMode(mode);
+          setView("auth");
+        }}
+        onLogout={handleLogout}
+        currentView={view}
       />
 
       {/* Incoming Handover Notification Banner */}
