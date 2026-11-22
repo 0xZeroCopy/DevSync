@@ -42,12 +42,12 @@ DevSync is organized as a monorepo containing the coordination backend, test sui
 
 | Component                                               | Status                    | Description                                                                                                                      |
 | :------------------------------------------------------ | :------------------------ | :------------------------------------------------------------------------------------------------------------------------------- |
-| **Lock Manager Engine** (`server/lockManager.js`)       | **Implemented**           | In-memory locking core managing leases, collision checks, heartbeats, renewals, and expiration eviction.                         |
-| **WebSocket Coordination Server** (`server/index.js`)   | **Implemented**           | Real-time WebSocket server managing client connections, instant state snapshots, request routing, and peer broadcasts.           |
-| **Integration & Unit Test Suite** (`tests/`)            | **Implemented**           | Automated test suite verifying lock rules, lease expiration sweeps, concurrency denials, socket broadcasts, and state hydration. |
+| **Lock Manager Engine** (`backend/lockManager.js`)      | **Implemented**           | In-memory locking core managing leases, collision checks, heartbeats, renewals, and expiration eviction.                         |
+| **WebSocket Coordination Server** (`backend/index.js`)  | **Implemented**           | Real-time WebSocket server managing client connections, instant state snapshots, request routing, and peer broadcasts.           |
+| **Integration & Unit Test Suite** (`backend/tests/`)    | **Implemented**           | Automated test suite verifying lock rules, lease expiration sweeps, concurrency denials, socket broadcasts, and state hydration. |
 | **Continuous Integration** (`.github/workflows/ci.yml`) | **Implemented**           | GitHub Actions pipeline running dependency installs and integration tests on Node.js 22.                                         |
 | **Shared Data Contracts** (`CONTRACTS.md`)              | **Documented (v1)**       | Formal specification of wire messages, schemas, and future handover protocols.                                                   |
-| **Client Extension** (`client/`)                        | _Scaffolded (`.gitkeep`)_ | Workspace allocated for IDE / editor plugins (e.g., VS Code extension).                                                          |
+| **Frontend Application** (`frontend/`)                  | **Implemented**           | React 19 + Vite web interface with Monaco editor, real-time lock visualization, and handover workflows.                          |
 | **Intelligence Engine** (`intelligence/`)               | _Scaffolded (`.gitkeep`)_ | Workspace allocated for AST symbol parsing, static analysis, and code range mapping.                                             |
 | **Execution Sandbox** (`sandbox/`)                      | _Scaffolded (`.gitkeep`)_ | Workspace allocated for isolated runtime execution or reproduction harnesses.                                                    |
 
@@ -137,21 +137,29 @@ DevSync/
 ├── .github/
 │   └── workflows/
 │       └── ci.yml                 # GitHub Actions CI workflow
-├── client/                        # Scaffolded workspace for IDE/editor plugins
-│   └── .gitkeep
+├── backend/                       # Backend coordination service & test suites
+│   ├── tests/                     # Unit & integration test suites
+│   │   ├── lock_manages.test.js   # Unit tests for LockManager core mechanics
+│   │   └── websockets.test.js     # Integration tests for WebSocket workflows & sweeps
+│   ├── index.js                   # WebSocket server entrypoint & message routing
+│   ├── lockManager.js             # In-memory lock state machine & lease management
+│   ├── package.json               # Backend scripts & dependencies (ws)
+│   └── package-lock.json          # Dependency lockfile
+├── frontend/                      # Frontend web interface (React + Vite + Tailwind)
+│   ├── src/                       # React components, hooks, and mock data
+│   │   ├── components/            # UI components (Monaco editor, symbol tree, etc.)
+│   │   ├── hooks/                 # WebSocket hook (useDevSyncSocket)
+│   │   └── App.jsx                # Main application component
+│   ├── index.html                 # HTML shell
+│   ├── package.json               # Frontend dependencies & scripts
+│   ├── package-lock.json          # Dependency lockfile
+│   └── vite.config.js             # Vite configuration
 ├── intelligence/                  # Scaffolded workspace for AST & symbol analysis
 │   └── .gitkeep
 ├── sandbox/                       # Scaffolded workspace for execution environments
 │   └── .gitkeep
-├── server/                        # Backend coordination service
-│   ├── index.js                   # WebSocket server entrypoint & message routing
-│   ├── lockManager.js             # In-memory lock state machine & lease management
-│   ├── package.json               # Server scripts & dependencies (ws)
-│   └── package-lock.json          # Dependency lockfile
-├── tests/                         # Test suites
-│   ├── lock_manages.test.js       # Unit tests for LockManager core mechanics
-│   └── websockets.test.js         # Integration tests for WebSocket workflows & sweeps
 ├── CONTRACTS.md                   # Formal specification for shared data contracts (v1)
+├── package.json                   # Root monorepo scripts
 └── README.md                      # Project documentation
 ```
 
@@ -166,34 +174,67 @@ DevSync/
 
 ### Installation
 
-Clone the repository and install server dependencies:
+Clone the repository and install dependencies:
 
 ```bash
 git clone https://github.com/0xZeroCopy/DevSync.git
-cd DevSync/server
-npm install
+cd DevSync
+
+# Install backend dependencies
+cd backend && npm install && cd ..
+
+# Install frontend dependencies
+cd frontend && npm install && cd ..
+
+# Or install both via root script:
+npm run install:all
 ```
 
-### Starting the WebSocket Server
+### Starting the Applications
 
-Start the server using npm:
+#### 1. WebSocket Backend Server
+
+Start the backend server using npm from the backend folder:
 
 ```bash
-cd server
+cd backend
 npm start
+```
+
+Or from the project root:
+
+```bash
+npm run start:backend
 ```
 
 Or execute directly with Node:
 
 ```bash
-node server/index.js
+node backend/index.js
 ```
 
 By default, the server binds to port `8080`. You can configure the port using the `PORT` environment variable:
 
 ```bash
-PORT=9000 node server/index.js
+PORT=9000 node backend/index.js
 ```
+
+#### 2. Frontend Web Interface
+
+Start the frontend Vite development server:
+
+```bash
+cd frontend
+npm run dev
+```
+
+Or from the project root:
+
+```bash
+npm run dev:frontend
+```
+
+The frontend will run at `http://localhost:3000` and automatically connect to `ws://localhost:8080`.
 
 ---
 
@@ -203,24 +244,26 @@ PORT=9000 node server/index.js
 
 The test suite leverages Node.js's built-in test runner (`node:test`) and assertion library (`node:assert/strict`).
 
-Run all test suites from the `server` directory:
+Run all test suites from the `backend` directory:
 
 ```bash
-cd server
+cd backend
 npm test
 ```
 
-Or run the test runner directly from the project root:
+Or run directly from the project root:
 
 ```bash
-node --test tests/*.test.js
+npm test
+# or
+node --test backend/tests/*.test.js
 ```
 
 ### Test Coverage Summary
 
 The automated test suites cover both isolated unit behavior and full end-to-end WebSocket communication:
 
-1. **LockManager Unit Tests (`tests/lock_manages.test.js`)**:
+1. **LockManager Unit Tests (`backend/tests/lock_manages.test.js`)**:
    - Initial acquisition and owner verification.
    - Rejection of conflicting requests on already locked symbols.
    - Heartbeat lease extension verification.
@@ -230,7 +273,7 @@ The automated test suites cover both isolated unit behavior and full end-to-end 
    - Error handling for releases targeting non-existent symbols (`NOT_FOUND`).
    - In-place intent updating while maintaining invariant `lockId`.
 
-2. **WebSocket Integration Tests (`tests/websockets.test.js`)**:
+2. **WebSocket Integration Tests (`backend/tests/websockets.test.js`)**:
    - Automatic `STATE_SNAPSHOT` broadcast on initial socket connection.
    - Manual state snapshot querying via `GET_STATE`.
    - Real-time peer broadcasting of `LOCK_ACQUIRED` and `LOCK_RELEASED`.
@@ -246,8 +289,8 @@ Every commit pushed to `main` and all pull requests trigger the automated GitHub
 
 1. Checks out the code on `ubuntu-latest`.
 2. Configures Node.js 22 with npm cache enabled.
-3. Installs dependencies using `npm ci`.
-4. Executes the full integration test suite (`node --test ../tests/*.test.js`).
+3. Installs dependencies using `npm ci` inside `backend`.
+4. Executes the full integration test suite (`npm test`).
 
 ---
 
@@ -256,6 +299,6 @@ Every commit pushed to `main` and all pull requests trigger the automated GitHub
 The following capabilities are specified in project design documents and contracts, with implementation planned in subsequent milestones:
 
 - **Lock Handover Workflow**: Implement `HANDOVER_REQUEST`, `HANDOVER_RESPONSE`, and `HANDOVER_DECLINED` flows allowing developers to negotiate and transfer locks directly within the editor.
-- **Client Extensions (`client/`)**: VS Code and JetBrains IDE extensions rendering editor gutters, lock markers, and active collaborator intent banners.
+- **Client Extensions (`frontend/` & IDE plugins)**: VS Code and JetBrains IDE extensions rendering editor gutters, lock markers, and active collaborator intent banners.
 - **Language Intelligence Service (`intelligence/`)**: Tree-sitter and LSP-based AST parsing to automatically detect symbol boundaries, function declarations, and offset tracking on live file changes.
 - **Multi-Server State Synchronization**: Distributed state persistence or Redis adapter to enable horizontal scaling of WebSocket coordination nodes.

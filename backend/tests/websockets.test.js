@@ -1,7 +1,7 @@
 // tests/websockets.test.js
 const { test, describe, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
-const { startServer } = require("../server/index");
+const { startServer } = require("../index");
 
 function connectClient(url) {
   return new Promise((resolve, reject) => {

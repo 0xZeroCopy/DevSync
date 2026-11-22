@@ -1,0 +1,24 @@
+{
+  "name": "devsync",
+  "version": "1.0.0",
+  "private": true,
+  "description": "DevSync — Real-time developer coordination and concurrency control engine",
+  "scripts": {
+    "start": "npm run start:backend",
+    "start:backend": "npm start --prefix backend",
+    "dev:frontend": "npm run dev --prefix frontend",
+    "build:frontend": "npm run build --prefix frontend",
+    "test:backend": "npm test --prefix backend",
+    "test": "npm test --prefix backend",
+    "install:all": "npm install --prefix backend && npm install --prefix frontend"
+  },
+  "keywords": [
+    "realtime",
+    "concurrency-control",
+    "websocket",
+    "developer-tooling",
+    "monaco-editor"
+  ],
+  "author": "",
+  "license": "ISC"
+}
