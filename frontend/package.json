@@ -1,5 +1,5 @@
 {
-  "name": "devsync-client",
+  "name": "devsync-frontend",
   "private": true,
   "version": "1.0.0",
   "type": "module",

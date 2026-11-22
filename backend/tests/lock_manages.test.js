@@ -1,5 +1,5 @@
 const assert = require("assert");
-const LockManager = require("../server/lockManager.js");
+const LockManager = require("../lockManager.js");
 
 const lm = new LockManager(500); // short 500ms lease so we can test expiry
 

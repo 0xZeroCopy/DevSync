@@ -1,10 +1,10 @@
 {
-  "name": "server",
+  "name": "devsync-backend",
   "version": "1.0.0",
-  "description": "",
+  "description": "DevSync real-time WebSocket coordination server and lock manager",
   "main": "index.js",
   "scripts": {
-    "test": "node --test ../tests/*.test.js",
+    "test": "node --test tests/*.test.js",
     "start": "node index.js"
   },
   "keywords": [],
