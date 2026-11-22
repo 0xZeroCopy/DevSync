@@ -19,6 +19,7 @@ export function CodeCanvas({
   onOpenAcquire,
   onOpenHandover,
   onReleaseLock,
+  onUpdateCode,
 }) {
   const [copied, setCopied] = useState(false);
   const [readOnlyWarning, setReadOnlyWarning] = useState(null);
@@ -292,6 +293,7 @@ export function CodeCanvas({
           height="100%"
           language={file.language}
           value={file.code}
+          onChange={(value) => onUpdateCode?.(value || "")}
           theme="devsync-dark"
           options={{
             fontFamily: '"JetBrains Mono", monospace',
