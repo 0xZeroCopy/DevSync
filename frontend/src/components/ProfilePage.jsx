@@ -35,12 +35,14 @@ export function ProfilePage({
   currentUser, 
   onUpdateUser, 
   onBackToWorkspace, 
+  onNavigateDashboard,
   onLogout,
   locks = [],
   onReleaseLock,
   isConnected
 }) {
   const [name, setName] = useState(currentUser.name || "");
+  const [username, setUsername] = useState(currentUser.username || currentUser.name.toLowerCase().replace(/[^a-z0-9_]/g, "_"));
   const [email, setEmail] = useState(currentUser.email || `${currentUser.name.toLowerCase()}@devsync.io`);
   const [role, setRole] = useState(currentUser.role || "Developer");
   const [avatarColor, setAvatarColor] = useState(currentUser.avatarColor || "#8B5CF6");
@@ -61,6 +63,7 @@ export function ProfilePage({
     const updated = {
       ...currentUser,
       name: name.trim() || currentUser.name,
+      username: username.trim().toLowerCase().replace(/[^a-z0-9_]/g, ""),
       email: email.trim(),
       role: role.trim(),
       avatarColor,
@@ -74,14 +77,25 @@ export function ProfilePage({
     <div className="min-h-screen w-screen bg-[#0F172A] text-slate-100 flex flex-col font-sans select-none overflow-y-auto">
       {/* Top Navbar */}
       <header className="h-14 bg-[#1E293B] border-b border-[#334155] px-6 flex items-center justify-between sticky top-0 z-20">
-        <div className="flex items-center space-x-4">
-          <button
-            onClick={onBackToWorkspace}
-            className="flex items-center space-x-2 text-xs font-medium text-slate-300 hover:text-white px-3 py-1.5 rounded-lg bg-[#0F172A] border border-[#334155] hover:border-slate-500 transition-colors cursor-pointer"
-          >
-            <ArrowLeft className="h-3.5 w-3.5 text-indigo-400" />
-            <span>Back to Editor</span>
-          </button>
+        <div className="flex items-center space-x-3">
+          {onNavigateDashboard && (
+            <button
+              onClick={onNavigateDashboard}
+              className="flex items-center space-x-1.5 text-xs font-medium text-slate-300 hover:text-white px-3 py-1.5 rounded-lg bg-[#0F172A] border border-[#334155] hover:border-slate-500 transition-colors cursor-pointer"
+            >
+              <ArrowLeft className="h-3.5 w-3.5 text-indigo-400" />
+              <span>Projects Dashboard</span>
+            </button>
+          )}
+
+          {onBackToWorkspace && (
+            <button
+              onClick={onBackToWorkspace}
+              className="flex items-center space-x-1.5 text-xs font-medium text-slate-300 hover:text-white px-3 py-1.5 rounded-lg bg-[#0F172A] border border-[#334155] hover:border-slate-500 transition-colors cursor-pointer"
+            >
+              <span>Code Editor</span>
+            </button>
+          )}
           
           <div className="h-4 w-px bg-[#334155]" />
           
@@ -131,6 +145,9 @@ export function ProfilePage({
               <div>
                 <div className="flex items-center space-x-2">
                   <h1 className="text-xl font-bold text-white">{name}</h1>
+                  {currentUser.username && (
+                    <span className="text-xs font-mono text-indigo-400">@{currentUser.username}</span>
+                  )}
                   <span className="text-[10px] px-2 py-0.5 rounded-full bg-indigo-950/70 border border-indigo-700/60 text-indigo-300 font-mono">
                     {role}
                   </span>

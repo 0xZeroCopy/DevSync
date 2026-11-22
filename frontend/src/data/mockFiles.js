@@ -163,25 +163,90 @@ export const MOCK_DEVELOPERS = [
   {
     id: "673f9a1c8e2b4d0012a34b59",
     name: "Malika",
-    role: "Developer",
+    username: "malika_dev",
+    email: "malika237581@gmail.com",
+    role: "Full Stack Developer",
     avatarColor: "#8B5CF6", // Purple
   },
   {
     id: "673f9a1c8e2b4d0012a34b56",
     name: "Trisha",
+    username: "trisha_core",
+    email: "trisha@devsync.io",
     role: "Lead Backend",
     avatarColor: "#6366F1", // Indigo
   },
   {
     id: "673f9a1c8e2b4d0012a34b57",
     name: "Tanmay",
+    username: "tanmay_r",
+    email: "tanmay@devsync.io",
     role: "Platform Engineer",
     avatarColor: "#22C55E", // Green
   },
   {
     id: "673f9a1c8e2b4d0012a34b58",
     name: "Suyas",
+    username: "suyas_sys",
+    email: "suyas@devsync.io",
     role: "Systems Developer",
     avatarColor: "#F59E0B", // Amber
   },
+];
+
+export const INITIAL_PROJECTS = [
+  {
+    id: "repo_devsync_core",
+    name: "DevSync-Core",
+    slug: "devsync-core",
+    description: "Real-time developer coordination and concurrency control engine",
+    language: "Python / Node.js",
+    visibility: "private",
+    defaultBranch: "main",
+    ownerId: "673f9a1c8e2b4d0012a34b59",
+    ownerName: "Malika",
+    ownerUsername: "malika_dev",
+    collaborators: [
+      { id: "673f9a1c8e2b4d0012a34b59", name: "Malika", username: "malika_dev", role: "Owner", avatarColor: "#8B5CF6" },
+      { id: "673f9a1c8e2b4d0012a34b57", name: "Tanmay", username: "tanmay_r", role: "Collaborator", avatarColor: "#22C55E" },
+      { id: "673f9a1c8e2b4d0012a34b56", name: "Trisha", username: "trisha_core", role: "Reviewer", avatarColor: "#6366F1" }
+    ],
+    updatedAt: "Just now",
+    stars: 12,
+  },
+  {
+    id: "repo_auth_gateway",
+    name: "auth-gateway",
+    slug: "auth-gateway",
+    description: "OAuth2 & JWT Token validation gateway with distributed Redis caching",
+    language: "TypeScript",
+    visibility: "public",
+    defaultBranch: "main",
+    ownerId: "673f9a1c8e2b4d0012a34b56",
+    ownerName: "Trisha",
+    ownerUsername: "trisha_core",
+    collaborators: [
+      { id: "673f9a1c8e2b4d0012a34b56", name: "Trisha", username: "trisha_core", role: "Owner", avatarColor: "#6366F1" },
+      { id: "673f9a1c8e2b4d0012a34b59", name: "Malika", username: "malika_dev", role: "Collaborator", avatarColor: "#8B5CF6" }
+    ],
+    updatedAt: "2 hours ago",
+    stars: 8,
+  }
+];
+
+export const INITIAL_INVITATIONS = [
+  {
+    id: "inv_1",
+    projectId: "repo_sys_monitor",
+    projectName: "cluster-telemetry",
+    projectDescription: "Real-time WebSocket connection telemetry and health probes",
+    fromUserId: "673f9a1c8e2b4d0012a34b58",
+    fromUserName: "Suyas",
+    fromUsername: "suyas_sys",
+    toUsername: "malika_dev",
+    toEmail: "malika237581@gmail.com",
+    role: "Collaborator",
+    status: "pending",
+    createdAt: "10 mins ago"
+  }
 ];

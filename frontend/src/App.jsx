@@ -7,8 +7,9 @@ import { BottomDrawer } from "./components/EventAuditDrawer";
 import { CallGraphAlert } from "./components/CallGraphAlert";
 import { AuthPage } from "./components/AuthPage";
 import { ProfilePage } from "./components/ProfilePage";
+import { Dashboard } from "./components/Dashboard";
 import { useDevSyncSocket } from "./hooks/useDevSyncSocket";
-import { MOCK_PROJECT_FILES, MOCK_DEVELOPERS } from "./data/mockFiles";
+import { MOCK_PROJECT_FILES, MOCK_DEVELOPERS, INITIAL_PROJECTS, INITIAL_INVITATIONS } from "./data/mockFiles";
 import { AlertCircle, X } from "lucide-react";
 
 export function App() {
@@ -28,7 +29,7 @@ export function App() {
   const [view, setView] = useState(() => {
     try {
       const saved = localStorage.getItem("devsync_auth_user");
-      if (saved) return "workspace";
+      if (saved) return "dashboard";
     } catch {
       // ignore
     }
@@ -36,6 +37,28 @@ export function App() {
   });
 
   const [authMode, setAuthMode] = useState("signup"); // Default to signup first
+
+  // Projects & Repositories State (Persisted)
+  const [projects, setProjects] = useState(() => {
+    try {
+      const saved = localStorage.getItem("devsync_projects");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return INITIAL_PROJECTS;
+  });
+
+  // Invitations State (Persisted)
+  const [invitations, setInvitations] = useState(() => {
+    try {
+      const saved = localStorage.getItem("devsync_invitations");
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return INITIAL_INVITATIONS;
+  });
+
+  const [activeProject, setActiveProject] = useState(() => {
+    return projects[0] || null;
+  });
 
   const [selectedFile, setSelectedFile] = useState(MOCK_PROJECT_FILES[0]);
   const [selectedSymbol, setSelectedSymbol] = useState(MOCK_PROJECT_FILES[0].symbols[0]);
@@ -55,9 +78,10 @@ export function App() {
     }
   };
 
+  // After Signup or Login -> Open the Dashboard!
   const handleAuthSuccess = (authenticatedUser) => {
     handleUpdateUser(authenticatedUser);
-    setView("workspace");
+    setView("dashboard");
   };
 
   const handleLogout = () => {
@@ -69,6 +93,115 @@ export function App() {
     setCurrentUser(null);
     setAuthMode("login");
     setView("auth");
+  };
+
+  // Create Repository Handler
+  const handleCreateProject = (newRepo) => {
+    const updated = [newRepo, ...projects];
+    setProjects(updated);
+    try {
+      localStorage.setItem("devsync_projects", JSON.stringify(updated));
+    } catch {}
+  };
+
+  // Invite Teammate Handler
+  const handleInviteTeammate = (newInvite) => {
+    const updated = [newInvite, ...invitations];
+    setInvitations(updated);
+    try {
+      localStorage.setItem("devsync_invitations", JSON.stringify(updated));
+    } catch {}
+  };
+
+  // Accept Project Invitation Handler
+  const handleAcceptInvite = (inv) => {
+    // 1. Mark invite accepted
+    const updatedInvites = invitations.map((i) =>
+      i.id === inv.id ? { ...i, status: "accepted" } : i
+    );
+    setInvitations(updatedInvites);
+
+    // 2. Add collaborator to the project
+    let updatedProjects = [...projects];
+    const projectIndex = updatedProjects.findIndex((p) => p.id === inv.projectId);
+
+    const isJoinRequest = inv.type === "join_request";
+    const collaboratorToAdd = isJoinRequest
+      ? {
+          id: inv.fromUserId,
+          name: inv.fromUserName,
+          username: inv.fromUsername,
+          role: "Collaborator",
+          avatarColor: inv.fromUserAvatar || "#8B5CF6",
+        }
+      : {
+          id: currentUser.id,
+          name: currentUser.name,
+          username: currentUser.username || currentUser.name.toLowerCase(),
+          role: inv.role || "Collaborator",
+          avatarColor: currentUser.avatarColor || "#8B5CF6",
+        };
+
+    if (projectIndex >= 0) {
+      const targetProj = updatedProjects[projectIndex];
+      const hasMember = targetProj.collaborators?.some(
+        (c) => c.username === collaboratorToAdd.username || (collaboratorToAdd.id && c.id === collaboratorToAdd.id)
+      );
+      if (!hasMember) {
+        targetProj.collaborators = [...(targetProj.collaborators || []), collaboratorToAdd];
+        updatedProjects[projectIndex] = { ...targetProj };
+      }
+    } else if (!isJoinRequest) {
+      // If project wasn't previously in list, create shared entry
+      updatedProjects.unshift({
+        id: inv.projectId,
+        name: inv.projectName,
+        slug: inv.projectName.toLowerCase().replace(/[^a-z0-9-_]/g, "-"),
+        description: inv.projectDescription || "Shared collaborative project",
+        language: "Python / Node.js",
+        visibility: "private",
+        defaultBranch: "main",
+        ownerId: inv.fromUserId,
+        ownerName: inv.fromUserName,
+        ownerUsername: inv.fromUsername,
+        collaborators: [
+          {
+            id: inv.fromUserId,
+            name: inv.fromUserName,
+            username: inv.fromUsername,
+            role: "Owner",
+            avatarColor: "#6366F1",
+          },
+          newCollaborator
+        ],
+        updatedAt: "Just now",
+        stars: 3,
+      });
+    }
+
+    setProjects(updatedProjects);
+
+    try {
+      localStorage.setItem("devsync_invitations", JSON.stringify(updatedInvites));
+      localStorage.setItem("devsync_projects", JSON.stringify(updatedProjects));
+    } catch {}
+  };
+
+  // Decline Invitation Handler
+  const handleDeclineInvite = (invId) => {
+    const updatedInvites = invitations.map((i) =>
+      i.id === invId ? { ...i, status: "declined" } : i
+    );
+    setInvitations(updatedInvites);
+    try {
+      localStorage.setItem("devsync_invitations", JSON.stringify(updatedInvites));
+    } catch {}
+  };
+
+  // Launch Editor on a specific project
+  const handleOpenWorkspace = (project) => {
+    setActiveProject(project);
+    setView("workspace");
   };
 
   // WebSocket custom hook
@@ -117,7 +250,26 @@ export function App() {
       <AuthPage
         initialMode={authMode}
         onAuthSuccess={handleAuthSuccess}
-        onBackToWorkspace={currentUser && view === "auth" ? () => setView("workspace") : null}
+        onBackToWorkspace={null}
+      />
+    );
+  }
+
+  // If viewing Projects Dashboard (default destination after signup / login!)
+  if (view === "dashboard") {
+    return (
+      <Dashboard
+        currentUser={currentUser}
+        projects={projects}
+        onCreateProject={handleCreateProject}
+        onInviteTeammate={handleInviteTeammate}
+        invitations={invitations}
+        onAcceptInvite={handleAcceptInvite}
+        onDeclineInvite={handleDeclineInvite}
+        onOpenWorkspace={handleOpenWorkspace}
+        onNavigateProfile={() => setView("profile")}
+        onLogout={handleLogout}
+        isConnected={isConnected}
       />
     );
   }
@@ -129,6 +281,7 @@ export function App() {
         currentUser={currentUser}
         onUpdateUser={handleUpdateUser}
         onBackToWorkspace={() => setView("workspace")}
+        onNavigateDashboard={() => setView("dashboard")}
         onLogout={handleLogout}
         locks={locks}
         onReleaseLock={releaseLock}
@@ -147,6 +300,8 @@ export function App() {
         locks={locks}
         onRefresh={refreshState}
         onNavigateProfile={() => setView("profile")}
+        onNavigateDashboard={() => setView("dashboard")}
+        activeProject={activeProject}
         onNavigateAuth={(mode) => {
           setAuthMode(mode);
           setView("auth");
