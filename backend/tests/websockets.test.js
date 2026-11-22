@@ -1,4 +1,3 @@
-// tests/websockets.test.js
 const { test, describe, beforeEach, afterEach } = require("node:test");
 const assert = require("node:assert/strict");
 const { startServer } = require("../index");
@@ -115,27 +114,20 @@ describe("DevSync WebSocket coordination", () => {
 
   test("broadcasts LOCK_ACQUIRED and LOCK_RELEASED to other clients", async () => {
     const c1 = await connectClient(url);
-    await c1.nextMessage(); // initial snapshot
-
+    await c1.nextMessage();
     const c2 = await connectClient(url);
-    await c2.nextMessage(); // initial snapshot
+    await c2.nextMessage();
 
     c1.send(sampleAcquire());
     const c1Ack = await c1.nextMessage();
     const c2Broadcast = await c2.nextMessage();
-
     assert.equal(c1Ack.type, "LOCK_ACQUIRED");
     assert.equal(c2Broadcast.type, "LOCK_ACQUIRED");
     assert.equal(c2Broadcast.symbolPath, "src/index.js#main");
 
-    c1.send({
-      type: "RELEASE_LOCK",
-      symbolPath: "src/index.js#main",
-      ownerId: "u1",
-    });
+    c1.send({ type: "RELEASE_LOCK", symbolPath: "src/index.js#main", ownerId: "u1" });
     const c1Release = await c1.nextMessage();
     const c2ReleaseBroadcast = await c2.nextMessage();
-
     assert.equal(c1Release.type, "LOCK_RELEASED");
     assert.equal(c2ReleaseBroadcast.type, "LOCK_RELEASED");
     assert.equal(c2ReleaseBroadcast.reason, "RELEASED");
@@ -146,28 +138,19 @@ describe("DevSync WebSocket coordination", () => {
   test("denies conflicting symbol lock and enforces one lock per user", async () => {
     const c1 = await connectClient(url);
     await c1.nextMessage();
-
     const c2 = await connectClient(url);
     await c2.nextMessage();
 
     c1.send(sampleAcquire({ symbolPath: "src/index.js#a", ownerId: "u1" }));
     assert.equal((await c1.nextMessage()).type, "LOCK_ACQUIRED");
-    await c2.nextMessage(); // broadcast
+    await c2.nextMessage();
 
-    // Same user trying a different symbol -> denied
     c1.send(sampleAcquire({ symbolPath: "src/index.js#b", ownerId: "u1" }));
     const sameUserDenied = await c1.nextMessage();
     assert.equal(sameUserDenied.type, "LOCK_DENIED");
     assert.equal(sameUserDenied.reason, "ALREADY_HOLDING_LOCK");
 
-    // Different user trying locked symbol -> denied
-    c2.send(
-      sampleAcquire({
-        symbolPath: "src/index.js#a",
-        ownerId: "u2",
-        ownerName: "Other",
-      }),
-    );
+    c2.send(sampleAcquire({ symbolPath: "src/index.js#a", ownerId: "u2", ownerName: "Other" }));
     const otherUserDenied = await c2.nextMessage();
     assert.equal(otherUserDenied.type, "LOCK_DENIED");
     assert.equal(otherUserDenied.reason, "ALREADY_LOCKED");
@@ -178,14 +161,12 @@ describe("DevSync WebSocket coordination", () => {
   test("keeps the lock after the holder disconnects (expiry cleans it up)", async () => {
     const c1 = await connectClient(url);
     await c1.nextMessage();
-
     const c2 = await connectClient(url);
     await c2.nextMessage();
 
     c1.send(sampleAcquire());
     await c1.nextMessage();
-    await c2.nextMessage(); // LOCK_ACQUIRED broadcast
-
+    await c2.nextMessage();
     await c1.close();
 
     c2.send({ type: "GET_STATE" });
@@ -202,12 +183,10 @@ describe("DevSync WebSocket coordination", () => {
     await c1.nextMessage();
     c1.send(sampleAcquire());
     await c1.nextMessage();
-
     const c2 = await connectClient(url);
     const snap = await c2.nextMessage();
     assert.equal(snap.locks[0].symbolPath, "src/index.js#main");
     assert.equal(snap.locks[0].filePath, "src/index.js");
-
     await Promise.all([c1.close(), c2.close()]);
   });
 
@@ -219,129 +198,110 @@ describe("DevSync WebSocket coordination", () => {
 
     c1.send(sampleAcquire({ intent: "old intent" }));
     const first = await c1.nextMessage();
-    await c2.nextMessage(); // first broadcast
-
+    await c2.nextMessage();
     c1.send(sampleAcquire({ intent: "new intent" }));
     const second = await c1.nextMessage();
     const broadcast = await c2.nextMessage();
-
     assert.equal(second.type, "LOCK_ACQUIRED");
     assert.equal(second.intent, "new intent");
-    assert.equal(second.lockId, first.lockId); // same lock, not a new one
+    assert.equal(second.lockId, first.lockId);
     assert.equal(broadcast.type, "LOCK_ACQUIRED");
     assert.equal(broadcast.intent, "new intent");
-
     await Promise.all([c1.close(), c2.close()]);
   });
 
   test("renews lock lease on HEARTBEAT", async () => {
     const c1 = await connectClient(url);
     await c1.nextMessage();
-
     c1.send(sampleAcquire());
     const acquired = await c1.nextMessage();
-
-    c1.send({
-      type: "HEARTBEAT",
-      symbolPath: "src/index.js#main",
-      ownerId: "u1",
-    });
+    c1.send({ type: "HEARTBEAT", symbolPath: "src/index.js#main", ownerId: "u1" });
     const renewed = await c1.nextMessage();
     assert.equal(renewed.type, "LOCK_RENEWED");
     assert.ok(renewed.expiresAt >= acquired.expiresAt);
-
     await c1.close();
   });
 
   test("handles full HANDOVER negotiation workflow (request, approve, transfer ownership)", async () => {
     const c1 = await connectClient(url);
-    await c1.nextMessage(); // initial snap
-
+    await c1.nextMessage();
     const c2 = await connectClient(url);
-    await c2.nextMessage(); // initial snap
+    await c2.nextMessage();
 
-    // User 1 acquires lock
     c1.send(sampleAcquire({ ownerId: "u1", ownerName: "Alice" }));
-    await c1.nextMessage(); // ack
-    await c2.nextMessage(); // broadcast
+    await c1.nextMessage();
+    await c2.nextMessage();
 
-    // User 2 requests handover
     c2.send({
-      type: "HANDOVER_REQUEST",
-      requestId: "ho_ws_1",
-      filePath: "src/index.js",
-      symbolPath: "src/index.js#main",
-      fromUserId: "u2",
-      fromUserName: "Bob",
-      toUserId: "u1",
-      note: "Need urgently",
+      type: "HANDOVER_REQUEST", requestId: "ho_ws_1", filePath: "src/index.js",
+      symbolPath: "src/index.js#main", fromUserId: "u2", fromUserName: "Bob",
+      toUserId: "u1", note: "Need urgently",
     });
+    assert.equal((await c2.nextMessage()).type, "HANDOVER_REQUEST");
+    const notification = await c1.nextMessage();
+    assert.equal(notification.type, "HANDOVER_REQUEST");
+    assert.equal(notification.fromUserName, "Bob");
 
-    const c2ReqAck = await c2.nextMessage();
-    assert.equal(c2ReqAck.type, "HANDOVER_REQUEST");
-
-    const c1ReqNotification = await c1.nextMessage();
-    assert.equal(c1ReqNotification.type, "HANDOVER_REQUEST");
-    assert.equal(c1ReqNotification.fromUserName, "Bob");
-
-    // User 1 approves handover
     c1.send({
-      type: "HANDOVER_RESPONSE",
-      requestId: "ho_ws_1",
-      symbolPath: "src/index.js#main",
-      accepted: true,
-      nextIntent: "Urgent fix by Bob",
+      type: "HANDOVER_RESPONSE", requestId: "ho_ws_1", symbolPath: "src/index.js#main",
+      responderUserId: "u1", accepted: true, nextIntent: "Urgent fix by Bob",
     });
-
-    // Both clients receive LOCK_ACQUIRED with ownerId: u2
-    const c1LockBroadcast = await c1.nextMessage();
-    const c2LockBroadcast = await c2.nextMessage();
-
-    assert.equal(c1LockBroadcast.type, "LOCK_ACQUIRED");
-    assert.equal(c1LockBroadcast.ownerId, "u2");
-
-    assert.equal(c2LockBroadcast.type, "LOCK_ACQUIRED");
-    assert.equal(c2LockBroadcast.ownerId, "u2");
-
+    assert.equal((await c1.nextMessage()).type, "LOCK_ACQUIRED");
+    assert.equal((await c2.nextMessage()).type, "LOCK_ACQUIRED");
+    assert.equal((await c1.nextMessage()).type, "HANDOVER_ACCEPTED");
+    assert.equal((await c2.nextMessage()).type, "HANDOVER_ACCEPTED");
     await Promise.all([c1.close(), c2.close()]);
+  });
+
+  test("responds to requester and holder when a handover response is invalid", async () => {
+    const holder = await connectClient(url);
+    await holder.nextMessage();
+    const requester = await connectClient(url);
+    await requester.nextMessage();
+
+    holder.send(sampleAcquire({ ownerId: "u1", ownerName: "Alice" }));
+    await holder.nextMessage();
+    await requester.nextMessage();
+    requester.send({
+      type: "HANDOVER_REQUEST", requestId: "ho_ws_invalid", symbolPath: "src/index.js#main",
+      fromUserId: "u2", fromUserName: "Bob", toUserId: "u1",
+    });
+    await requester.nextMessage();
+    await holder.nextMessage();
+
+    holder.send({
+      type: "HANDOVER_RESPONSE", requestId: "ho_ws_invalid", symbolPath: "src/index.js#main",
+      responderUserId: "u2", accepted: true,
+    });
+    assert.equal((await holder.nextMessage()).reason, "NOT_RECIPIENT");
+    const failureForRequester = await requester.nextMessage();
+    assert.equal(failureForRequester.type, "HANDOVER_FAILED");
+    assert.equal(failureForRequester.reason, "NOT_RECIPIENT");
+    await Promise.all([holder.close(), requester.close()]);
   });
 
   test("notifies requester when HANDOVER is declined", async () => {
     const c1 = await connectClient(url);
     await c1.nextMessage();
-
     const c2 = await connectClient(url);
     await c2.nextMessage();
-
     c1.send(sampleAcquire({ ownerId: "u1" }));
     await c1.nextMessage();
     await c2.nextMessage();
 
     c2.send({
-      type: "HANDOVER_REQUEST",
-      requestId: "ho_ws_2",
-      filePath: "src/index.js",
-      symbolPath: "src/index.js#main",
-      fromUserId: "u2",
-      fromUserName: "Bob",
-      toUserId: "u1",
+      type: "HANDOVER_REQUEST", requestId: "ho_ws_2", filePath: "src/index.js",
+      symbolPath: "src/index.js#main", fromUserId: "u2", fromUserName: "Bob", toUserId: "u1",
     });
-
-    await c2.nextMessage(); // c2 ack
-    await c1.nextMessage(); // c1 notification
-
-    // User 1 rejects handover
+    await c2.nextMessage();
+    await c1.nextMessage();
     c1.send({
-      type: "HANDOVER_RESPONSE",
-      requestId: "ho_ws_2",
-      symbolPath: "src/index.js#main",
-      accepted: false,
+      type: "HANDOVER_RESPONSE", requestId: "ho_ws_2", symbolPath: "src/index.js#main",
+      responderUserId: "u1", accepted: false,
     });
-
-    const c2Declined = await c2.nextMessage();
-    assert.equal(c2Declined.type, "HANDOVER_DECLINED");
-    assert.equal(c2Declined.reason, "DECLINED_BY_OWNER");
-
+    const declined = await c2.nextMessage();
+    assert.equal(declined.type, "HANDOVER_DECLINED");
+    assert.equal(declined.reason, "DECLINED_BY_OWNER");
     await Promise.all([c1.close(), c2.close()]);
   });
 });
@@ -351,7 +311,7 @@ describe("DevSync lock expiry (short lease)", () => {
   let url;
 
   beforeEach(async () => {
-    const started = startServer(0, 200); // 200ms lease; sweep runs every 1s
+    const started = startServer(0, 200);
     wss = started.wss;
     await new Promise((resolve) => {
       if (wss.address()) return resolve();
@@ -361,9 +321,7 @@ describe("DevSync lock expiry (short lease)", () => {
   });
 
   afterEach(async () => {
-    for (const client of wss.clients) {
-      client.terminate();
-    }
+    for (const client of wss.clients) client.terminate();
     await new Promise((resolve) => wss.close(resolve));
   });
 
@@ -372,18 +330,15 @@ describe("DevSync lock expiry (short lease)", () => {
     await c1.nextMessage();
     const c2 = await connectClient(url);
     await c2.nextMessage();
-
     c1.send(sampleAcquire());
     await c1.nextMessage();
-    await c2.nextMessage(); // LOCK_ACQUIRED broadcast
-
+    await c2.nextMessage();
     const expired = await c2.nextMessage(3000);
     assert.equal(expired.type, "LOCK_RELEASED");
     assert.equal(expired.reason, "EXPIRED");
     assert.equal(expired.symbolPath, "src/index.js#main");
     assert.equal(expired.filePath, "src/index.js");
     assert.equal(expired.ownerId, "u1");
-
     await Promise.all([c1.close(), c2.close()]);
   });
 
@@ -392,33 +347,27 @@ describe("DevSync lock expiry (short lease)", () => {
     await c1.nextMessage();
     const c2 = await connectClient(url);
     await c2.nextMessage();
-
     c1.send(sampleAcquire());
     await c1.nextMessage();
-    await c2.nextMessage(); // LOCK_ACQUIRED broadcast
-    await c2.nextMessage(3000); // EXPIRED broadcast
-
+    await c2.nextMessage();
+    await c2.nextMessage(3000);
     c2.send(sampleAcquire({ ownerId: "u2", ownerName: "Other" }));
     const result = await c2.nextMessage();
     assert.equal(result.type, "LOCK_ACQUIRED");
     assert.equal(result.ownerId, "u2");
-
     await Promise.all([c1.close(), c2.close()]);
   });
 
   test("owner can lock a different symbol after their old lock expires", async () => {
     const c1 = await connectClient(url);
     await c1.nextMessage();
-
     c1.send(sampleAcquire({ symbolPath: "src/index.js#a" }));
     await c1.nextMessage();
-    await c1.nextMessage(3000); // EXPIRED (sender gets it too, nobody is excluded)
-
+    await c1.nextMessage(3000);
     c1.send(sampleAcquire({ symbolPath: "src/index.js#b" }));
     const result = await c1.nextMessage();
     assert.equal(result.type, "LOCK_ACQUIRED");
     assert.equal(result.symbolPath, "src/index.js#b");
-
     await c1.close();
   });
 
@@ -427,27 +376,17 @@ describe("DevSync lock expiry (short lease)", () => {
     await c1.nextMessage();
     const c2 = await connectClient(url);
     await c2.nextMessage();
-
     c1.send(sampleAcquire());
     await c1.nextMessage();
     await c2.nextMessage();
 
-    // keep renewing for ~1.5s (several sweeps, lease is only 200ms)
     for (let i = 0; i < 10; i++) {
-      await new Promise((r) => setTimeout(r, 150));
-      c1.send({
-        type: "HEARTBEAT",
-        symbolPath: "src/index.js#main",
-        ownerId: "u1",
-      });
-      const renewed = await c1.nextMessage();
-      assert.equal(renewed.type, "LOCK_RENEWED");
+      await new Promise((resolve) => setTimeout(resolve, 150));
+      c1.send({ type: "HEARTBEAT", symbolPath: "src/index.js#main", ownerId: "u1" });
+      assert.equal((await c1.nextMessage()).type, "LOCK_RENEWED");
     }
-
     c2.send({ type: "GET_STATE" });
-    const snap = await c2.nextMessage();
-    assert.equal(snap.locks.length, 1);
-
+    assert.equal((await c2.nextMessage()).locks.length, 1);
     await Promise.all([c1.close(), c2.close()]);
   });
 });

@@ -52,7 +52,6 @@ export function useDevSyncSocket(wsUrl = "ws://localhost:8080", currentUser) {
           if (unmounted) return;
           setIsConnected(true);
           setLastError(null);
-          // Request initial state if server didn't push it
           send({ type: "GET_STATE" });
         };
 
@@ -102,10 +101,24 @@ export function useDevSyncSocket(wsUrl = "ws://localhost:8080", currentUser) {
                 break;
 
               case "HANDOVER_DECLINED":
-                setLastError({
-                  type: "HANDOVER_DECLINED",
-                  reason: data.reason || "Holder declined handover request",
-                });
+                if (data.fromUserId === currentUser?.id) {
+                  setLastError({
+                    type: "HANDOVER_DECLINED",
+                    reason: data.reason || "Holder declined handover request",
+                  });
+                }
+                break;
+
+              case "HANDOVER_FAILED":
+                if (!data.fromUserId || data.fromUserId === currentUser?.id) {
+                  setHandoverAlert((alert) =>
+                    alert?.requestId === data.requestId ? null : alert
+                  );
+                  setLastError({
+                    type: "HANDOVER_FAILED",
+                    reason: data.reason || "Handover could not be completed",
+                  });
+                }
                 break;
 
               case "ERROR":
@@ -120,7 +133,7 @@ export function useDevSyncSocket(wsUrl = "ws://localhost:8080", currentUser) {
           }
         };
 
-        ws.onerror = (err) => {
+        ws.onerror = () => {
           if (unmounted) return;
           setLastError({ type: "WS_ERROR", message: "Failed to connect to " + wsUrl });
         };
@@ -128,10 +141,9 @@ export function useDevSyncSocket(wsUrl = "ws://localhost:8080", currentUser) {
         ws.onclose = () => {
           if (unmounted) return;
           setIsConnected(false);
-          // Auto-reconnect after 2.5s
           reconnectTimeoutRef.current = setTimeout(connect, 2500);
         };
-      } catch (err) {
+      } catch {
         if (!unmounted) {
           setIsConnected(false);
           reconnectTimeoutRef.current = setTimeout(connect, 2500);
@@ -220,16 +232,18 @@ export function useDevSyncSocket(wsUrl = "ws://localhost:8080", currentUser) {
 
   const respondHandover = useCallback(
     (requestId, symbolPath, accepted, nextIntent) => {
+      if (!currentUser) return;
       send({
         type: "HANDOVER_RESPONSE",
         requestId,
         symbolPath,
+        responderUserId: currentUser.id,
         accepted,
         nextIntent,
       });
       setHandoverAlert(null);
     },
-    [send]
+    [currentUser, send]
   );
 
   return {
@@ -248,4 +262,3 @@ export function useDevSyncSocket(wsUrl = "ws://localhost:8080", currentUser) {
     refreshState: () => send({ type: "GET_STATE" }),
   };
 }
-

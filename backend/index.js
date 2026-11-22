@@ -65,18 +65,19 @@ function startServer(port = Number(process.env.PORT) || 8080, leaseMs = 30000) {
         case "HANDOVER_REQUEST":
           response = lockManager.requestHandover(msg);
           if (response.type === "HANDOVER_REQUEST") {
-            // Forward handover request to all clients so target lock owner receives prompt
             broadcast(response, socket);
           }
           break;
         case "HANDOVER_RESPONSE":
-          response = lockManager.respondHandover(msg);
+          response = lockManager.respondHandover({ ...msg, responderUserId: msg.responderUserId });
           if (response.type === "HANDOVER_ACCEPTED") {
-            // Broadcast newly transferred lock to all clients so User2 becomes owner and User1 is released
             broadcast(response.lock, null);
             broadcast(response, null);
           } else if (response.type === "HANDOVER_DECLINED") {
             broadcast(response, socket);
+          } else if (response.type === "HANDOVER_FAILED" && response.fromUserId) {
+            // Notify the requester as well as acknowledging the responder's failed attempt.
+            broadcast(response, null);
           }
           break;
         default:
@@ -87,6 +88,7 @@ function startServer(port = Number(process.env.PORT) || 8080, leaseMs = 30000) {
           break;
       }
 
+      // Always acknowledge the requester's/responding client's operation, including failures.
       sendJson(socket, response);
     });
   });
