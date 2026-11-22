@@ -15,6 +15,8 @@ import { TerminalPanel } from "./TerminalPanel";
 export function BottomDrawer({ 
   events = [], 
   activeFile, 
+  activeProject,
+  files = [],
   onRunCode,
   isRunning 
 }) {
@@ -104,6 +106,8 @@ export function BottomDrawer({
           {activeTab === "TERMINAL" ? (
             <TerminalPanel
               activeFile={activeFile}
+              activeProject={activeProject}
+              files={files}
               onRunCode={onRunCode}
               isRunning={isRunning}
             />
