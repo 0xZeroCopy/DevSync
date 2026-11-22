@@ -252,6 +252,98 @@ describe("DevSync WebSocket coordination", () => {
 
     await c1.close();
   });
+
+  test("handles full HANDOVER negotiation workflow (request, approve, transfer ownership)", async () => {
+    const c1 = await connectClient(url);
+    await c1.nextMessage(); // initial snap
+
+    const c2 = await connectClient(url);
+    await c2.nextMessage(); // initial snap
+
+    // User 1 acquires lock
+    c1.send(sampleAcquire({ ownerId: "u1", ownerName: "Alice" }));
+    await c1.nextMessage(); // ack
+    await c2.nextMessage(); // broadcast
+
+    // User 2 requests handover
+    c2.send({
+      type: "HANDOVER_REQUEST",
+      requestId: "ho_ws_1",
+      filePath: "src/index.js",
+      symbolPath: "src/index.js#main",
+      fromUserId: "u2",
+      fromUserName: "Bob",
+      toUserId: "u1",
+      note: "Need urgently",
+    });
+
+    const c2ReqAck = await c2.nextMessage();
+    assert.equal(c2ReqAck.type, "HANDOVER_REQUEST");
+
+    const c1ReqNotification = await c1.nextMessage();
+    assert.equal(c1ReqNotification.type, "HANDOVER_REQUEST");
+    assert.equal(c1ReqNotification.fromUserName, "Bob");
+
+    // User 1 approves handover
+    c1.send({
+      type: "HANDOVER_RESPONSE",
+      requestId: "ho_ws_1",
+      symbolPath: "src/index.js#main",
+      accepted: true,
+      nextIntent: "Urgent fix by Bob",
+    });
+
+    // Both clients receive LOCK_ACQUIRED with ownerId: u2
+    const c1LockBroadcast = await c1.nextMessage();
+    const c2LockBroadcast = await c2.nextMessage();
+
+    assert.equal(c1LockBroadcast.type, "LOCK_ACQUIRED");
+    assert.equal(c1LockBroadcast.ownerId, "u2");
+
+    assert.equal(c2LockBroadcast.type, "LOCK_ACQUIRED");
+    assert.equal(c2LockBroadcast.ownerId, "u2");
+
+    await Promise.all([c1.close(), c2.close()]);
+  });
+
+  test("notifies requester when HANDOVER is declined", async () => {
+    const c1 = await connectClient(url);
+    await c1.nextMessage();
+
+    const c2 = await connectClient(url);
+    await c2.nextMessage();
+
+    c1.send(sampleAcquire({ ownerId: "u1" }));
+    await c1.nextMessage();
+    await c2.nextMessage();
+
+    c2.send({
+      type: "HANDOVER_REQUEST",
+      requestId: "ho_ws_2",
+      filePath: "src/index.js",
+      symbolPath: "src/index.js#main",
+      fromUserId: "u2",
+      fromUserName: "Bob",
+      toUserId: "u1",
+    });
+
+    await c2.nextMessage(); // c2 ack
+    await c1.nextMessage(); // c1 notification
+
+    // User 1 rejects handover
+    c1.send({
+      type: "HANDOVER_RESPONSE",
+      requestId: "ho_ws_2",
+      symbolPath: "src/index.js#main",
+      accepted: false,
+    });
+
+    const c2Declined = await c2.nextMessage();
+    assert.equal(c2Declined.type, "HANDOVER_DECLINED");
+    assert.equal(c2Declined.reason, "DECLINED_BY_OWNER");
+
+    await Promise.all([c1.close(), c2.close()]);
+  });
 });
 
 describe("DevSync lock expiry (short lease)", () => {

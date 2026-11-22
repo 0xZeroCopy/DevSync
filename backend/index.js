@@ -62,6 +62,23 @@ function startServer(port = Number(process.env.PORT) || 8080, leaseMs = 30000) {
         case "GET_STATE":
           response = lockManager.getState();
           break;
+        case "HANDOVER_REQUEST":
+          response = lockManager.requestHandover(msg);
+          if (response.type === "HANDOVER_REQUEST") {
+            // Forward handover request to all clients so target lock owner receives prompt
+            broadcast(response, socket);
+          }
+          break;
+        case "HANDOVER_RESPONSE":
+          response = lockManager.respondHandover(msg);
+          if (response.type === "HANDOVER_ACCEPTED") {
+            // Broadcast newly transferred lock to all clients so User2 becomes owner and User1 is released
+            broadcast(response.lock, null);
+            broadcast(response, null);
+          } else if (response.type === "HANDOVER_DECLINED") {
+            broadcast(response, socket);
+          }
+          break;
         default:
           response = {
             type: "ERROR",

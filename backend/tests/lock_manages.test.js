@@ -85,4 +85,60 @@ assert.strictEqual(reacq.type, "LOCK_ACQUIRED");
 assert.strictEqual(reacq.intent, "new intent");
 assert.strictEqual(reacq.lockId, res3.lockId);
 
+// 10. Handover request & approval workflow
+// User A requests handover of "src/index.js#main" currently held by User B
+const hoReq = lm.requestHandover({
+  requestId: "ho_test_1",
+  filePath: "src/index.js",
+  symbolPath: "src/index.js#main",
+  fromUserId: "userA",
+  fromUserName: "Alice",
+  toUserId: "userB",
+  note: "Need to fix critical bug",
+});
+assert.strictEqual(hoReq.type, "HANDOVER_REQUEST");
+assert.strictEqual(hoReq.fromUserId, "userA");
+assert.strictEqual(hoReq.toUserId, "userB");
+
+// User B approves handover -> lock transferred to User A
+const hoApproved = lm.respondHandover({
+  requestId: "ho_test_1",
+  symbolPath: "src/index.js#main",
+  accepted: true,
+  nextIntent: "Fixing critical bug",
+});
+assert.strictEqual(hoApproved.type, "HANDOVER_ACCEPTED");
+assert.strictEqual(hoApproved.lock.ownerId, "userA");
+assert.strictEqual(hoApproved.lock.intent, "Fixing critical bug");
+
+// Verify that User A is now the sole holder
+const snapAfterHo = lm.getState();
+assert.strictEqual(snapAfterHo.locks[0].ownerId, "userA");
+
+// 11. Handover rejection workflow
+// User B requests handover from User A
+const hoReq2 = lm.requestHandover({
+  requestId: "ho_test_2",
+  filePath: "src/index.js",
+  symbolPath: "src/index.js#main",
+  fromUserId: "userB",
+  fromUserName: "Bob",
+  toUserId: "userA",
+  note: "Let me edit",
+});
+assert.strictEqual(hoReq2.type, "HANDOVER_REQUEST");
+
+// User A rejects handover
+const hoDeclined = lm.respondHandover({
+  requestId: "ho_test_2",
+  symbolPath: "src/index.js#main",
+  accepted: false,
+});
+assert.strictEqual(hoDeclined.type, "HANDOVER_DECLINED");
+assert.strictEqual(hoDeclined.reason, "DECLINED_BY_OWNER");
+
+// Verify that lock remains with User A
+const snapAfterDeclined = lm.getState();
+assert.strictEqual(snapAfterDeclined.locks[0].ownerId, "userA");
+
 console.log("All LockManager checks passed!");
