@@ -222,22 +222,25 @@ describe("DevSync WebSocket coordination", () => {
     await c1.close();
   });
 
-  test("handles full HANDOVER negotiation workflow (request, approve, transfer ownership)", async () => {
+  test("handles full HANDOVER negotiation workflow with targeted unicast and async waiting", async () => {
     const c1 = await connectClient(url);
     await c1.nextMessage();
     const c2 = await connectClient(url);
     await c2.nextMessage();
+    const c3 = await connectClient(url);
+    await c3.nextMessage();
 
     c1.send(sampleAcquire({ ownerId: "u1", ownerName: "Alice" }));
     await c1.nextMessage();
     await c2.nextMessage();
+    await c3.nextMessage();
 
     c2.send({
       type: "HANDOVER_REQUEST", requestId: "ho_ws_1", filePath: "src/index.js",
       symbolPath: "src/index.js#main", fromUserId: "u2", fromUserName: "Bob",
       toUserId: "u1", note: "Need urgently",
     });
-    assert.equal((await c2.nextMessage()).type, "HANDOVER_REQUEST");
+
     const notification = await c1.nextMessage();
     assert.equal(notification.type, "HANDOVER_REQUEST");
     assert.equal(notification.fromUserName, "Bob");
@@ -248,9 +251,10 @@ describe("DevSync WebSocket coordination", () => {
     });
     assert.equal((await c1.nextMessage()).type, "LOCK_ACQUIRED");
     assert.equal((await c2.nextMessage()).type, "LOCK_ACQUIRED");
+    assert.equal((await c3.nextMessage()).type, "LOCK_ACQUIRED");
     assert.equal((await c1.nextMessage()).type, "HANDOVER_ACCEPTED");
     assert.equal((await c2.nextMessage()).type, "HANDOVER_ACCEPTED");
-    await Promise.all([c1.close(), c2.close()]);
+    await Promise.all([c1.close(), c2.close(), c3.close()]);
   });
 
   test("responds to requester and holder when a handover response is invalid", async () => {
@@ -266,8 +270,8 @@ describe("DevSync WebSocket coordination", () => {
       type: "HANDOVER_REQUEST", requestId: "ho_ws_invalid", symbolPath: "src/index.js#main",
       fromUserId: "u2", fromUserName: "Bob", toUserId: "u1",
     });
-    await requester.nextMessage();
-    await holder.nextMessage();
+    const notification = await holder.nextMessage();
+    assert.equal(notification.type, "HANDOVER_REQUEST");
 
     holder.send({
       type: "HANDOVER_RESPONSE", requestId: "ho_ws_invalid", symbolPath: "src/index.js#main",
@@ -293,15 +297,73 @@ describe("DevSync WebSocket coordination", () => {
       type: "HANDOVER_REQUEST", requestId: "ho_ws_2", filePath: "src/index.js",
       symbolPath: "src/index.js#main", fromUserId: "u2", fromUserName: "Bob", toUserId: "u1",
     });
-    await c2.nextMessage();
-    await c1.nextMessage();
+    const notification = await c1.nextMessage();
+    assert.equal(notification.type, "HANDOVER_REQUEST");
+
     c1.send({
       type: "HANDOVER_RESPONSE", requestId: "ho_ws_2", symbolPath: "src/index.js#main",
       responderUserId: "u1", accepted: false,
     });
+    assert.equal((await c1.nextMessage()).type, "HANDOVER_DECLINED");
     const declined = await c2.nextMessage();
     assert.equal(declined.type, "HANDOVER_DECLINED");
     assert.equal(declined.reason, "DECLINED_BY_OWNER");
+    await Promise.all([c1.close(), c2.close()]);
+  });
+
+  test("rejects handover request immediately when target holder is offline", async () => {
+    const c1 = await connectClient(url);
+    await c1.nextMessage();
+
+    c1.send(sampleAcquire({ ownerId: "u1" }));
+    await c1.nextMessage();
+    await c1.close();
+
+    const c2 = await connectClient(url);
+    await c2.nextMessage();
+
+    c2.send({
+      type: "HANDOVER_REQUEST", requestId: "ho_offline", filePath: "src/index.js",
+      symbolPath: "src/index.js#main", fromUserId: "u2", fromUserName: "Bob", toUserId: "u1",
+    });
+
+    const reply = await c2.nextMessage();
+    assert.equal(reply.type, "HANDOVER_DECLINED");
+    assert.equal(reply.reason, "HOLDER_OFFLINE");
+    await c2.close();
+  });
+
+  test("times out when holder does not respond within configurable handover timeout", async () => {
+    const timeoutServer = startServer(0, 30000, 150);
+    const timeoutWss = timeoutServer.wss;
+    await new Promise((resolve) => {
+      if (timeoutWss.address()) return resolve();
+      timeoutWss.once("listening", resolve);
+    });
+    const timeoutUrl = `ws://localhost:${timeoutWss.address().port}`;
+
+    const c1 = await connectClient(timeoutUrl);
+    await c1.nextMessage();
+    const c2 = await connectClient(timeoutUrl);
+    await c2.nextMessage();
+
+    c1.send(sampleAcquire({ ownerId: "u1" }));
+    await c1.nextMessage();
+    await c2.nextMessage();
+
+    c2.send({
+      type: "HANDOVER_REQUEST", requestId: "ho_timeout", filePath: "src/index.js",
+      symbolPath: "src/index.js#main", fromUserId: "u2", fromUserName: "Bob", toUserId: "u1",
+    });
+
+    await c1.nextMessage();
+
+    const timeoutReply = await c2.nextMessage(2000);
+    assert.equal(timeoutReply.type, "HANDOVER_DECLINED");
+    assert.equal(timeoutReply.reason, "REQUEST_TIMEOUT");
+
+    for (const client of timeoutWss.clients) client.terminate();
+    await new Promise((resolve) => timeoutWss.close(resolve));
     await Promise.all([c1.close(), c2.close()]);
   });
 });
