@@ -1,259 +1,514 @@
 import React, { useState, useEffect } from "react";
+
+import Hero from "./pages/DevSyncHero.jsx";
+
+
 import { Header } from "./components/Header";
 import { SymbolTree } from "./components/SymbolTree";
 import { CodeCanvas } from "./components/CodeCanvas";
-import { HandoverModal, IncomingHandoverBanner } from "./components/HandoverModal";
+
+import {
+  HandoverModal,
+  IncomingHandoverBanner
+} from "./components/HandoverModal";
+
 import { BottomDrawer } from "./components/EventAuditDrawer";
 import { CallGraphAlert } from "./components/CallGraphAlert";
 import { AuthPage } from "./components/AuthPage";
 import { ProfilePage } from "./components/ProfilePage";
 import { Dashboard } from "./components/Dashboard";
+
 import { useDevSyncSocket } from "./hooks/useDevSyncSocket";
-import { 
-  MOCK_PROJECT_FILES, 
-  MOCK_DEVELOPERS, 
-  INITIAL_PROJECTS, 
+
+import {
+  MOCK_PROJECT_FILES,
+  MOCK_DEVELOPERS,
+  INITIAL_PROJECTS,
   INITIAL_INVITATIONS,
   DEFAULT_PROJECT_FILES_MAP,
   getInitialFilesForProject,
   extractSymbolsFromFile
 } from "./data/mockFiles";
+
 import { AlertCircle, X } from "lucide-react";
 
+
 export function App() {
-  // Authentication & View Routing State
+
+  // ==========================================
+  // 1. AUTHENTICATION & VIEW ROUTING
+  // ==========================================
+
   const [currentUser, setCurrentUser] = useState(() => {
     try {
       const saved = localStorage.getItem("devsync_auth_user");
+
       if (saved) {
         return JSON.parse(saved);
       }
     } catch {
-      // ignore
+      // Ignore storage errors
     }
-    return null; // Not logged in initially -> forces Signup/Login first
+
+    return null;
   });
+
+
+  // Initial page:
+  // Logged-in user -> Dashboard
+  // New visitor -> Landing Page
 
   const [view, setView] = useState(() => {
     try {
       const saved = localStorage.getItem("devsync_auth_user");
-      if (saved) return "dashboard";
+
+      if (saved) {
+        return "dashboard";
+      }
     } catch {
-      // ignore
+      // Ignore storage errors
     }
-    return "auth"; // First page to open is auth
+
+    return "landing";
   });
 
-  const [authMode, setAuthMode] = useState("signup"); // Default to signup first
 
-  // Projects & Repositories State (Persisted)
+  const [authMode, setAuthMode] = useState("signup");
+
+
+  // ==========================================
+  // 2. PROJECTS & REPOSITORIES
+  // ==========================================
+
   const [projects, setProjects] = useState(() => {
     try {
       const saved = localStorage.getItem("devsync_projects");
-      if (saved) return JSON.parse(saved);
-    } catch {}
+
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+
     return INITIAL_PROJECTS;
   });
 
-  // Invitations State (Persisted)
+
+  // ==========================================
+  // 3. INVITATIONS
+  // ==========================================
+
   const [invitations, setInvitations] = useState(() => {
     try {
       const saved = localStorage.getItem("devsync_invitations");
-      if (saved) return JSON.parse(saved);
-    } catch {}
+
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+
     return INITIAL_INVITATIONS;
   });
 
-  // Per-Project Files & Folders Map (Persisted)
+
+  // ==========================================
+  // 4. PROJECT FILES
+  // ==========================================
+
   const [projectFilesMap, setProjectFilesMap] = useState(() => {
     try {
       const saved = localStorage.getItem("devsync_project_files_map");
-      if (saved) return JSON.parse(saved);
-    } catch {}
+
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch {
+      // Ignore storage errors
+    }
+
     return DEFAULT_PROJECT_FILES_MAP;
   });
+
 
   const [activeProject, setActiveProject] = useState(() => {
     return projects[0] || null;
   });
 
-  // Current Files for Active Project
+
   const currentFiles = activeProject
-    ? projectFilesMap[activeProject.id] || getInitialFilesForProject(activeProject)
+    ? projectFilesMap[activeProject.id] ||
+      getInitialFilesForProject(activeProject)
     : MOCK_PROJECT_FILES;
 
-  const [selectedFile, setSelectedFile] = useState(() => currentFiles[0] || null);
-  const [selectedSymbol, setSelectedSymbol] = useState(() => currentFiles[0]?.symbols?.[0] || null);
 
-  // Sync initial files for active project if missing from map
+  const [selectedFile, setSelectedFile] = useState(
+    () => currentFiles[0] || null
+  );
+
+
+  const [selectedSymbol, setSelectedSymbol] = useState(
+    () => currentFiles[0]?.symbols?.[0] || null
+  );
+
+
+  // Sync initial files for active project
+
   useEffect(() => {
     if (activeProject && !projectFilesMap[activeProject.id]) {
+
       const initial = getInitialFilesForProject(activeProject);
-      const updated = { ...projectFilesMap, [activeProject.id]: initial };
+
+      const updated = {
+        ...projectFilesMap,
+        [activeProject.id]: initial
+      };
+
       setProjectFilesMap(updated);
+
       try {
-        localStorage.setItem("devsync_project_files_map", JSON.stringify(updated));
-      } catch {}
+        localStorage.setItem(
+          "devsync_project_files_map",
+          JSON.stringify(updated)
+        );
+      } catch {
+        // Ignore storage errors
+      }
     }
   }, [activeProject]);
 
-  // Modal states
+
+  // ==========================================
+  // 5. MODAL STATES
+  // ==========================================
+
   const [modalOpen, setModalOpen] = useState(false);
-  const [modalMode, setModalMode] = useState("ACQUIRE"); // "ACQUIRE" | "REQUEST_HANDOVER"
+
+  const [modalMode, setModalMode] = useState("ACQUIRE");
+
   const [targetLock, setTargetLock] = useState(null);
 
-  // Sync user updates to localStorage
+
+  // ==========================================
+  // 6. USER MANAGEMENT
+  // ==========================================
+
   const handleUpdateUser = (updated) => {
+
     setCurrentUser(updated);
+
     try {
-      localStorage.setItem("devsync_auth_user", JSON.stringify(updated));
+      localStorage.setItem(
+        "devsync_auth_user",
+        JSON.stringify(updated)
+      );
     } catch {
-      // ignore
+      // Ignore storage errors
     }
   };
 
-  // After Signup or Login -> Open the Dashboard!
+
+  // After successful signup/login -> Dashboard
+
   const handleAuthSuccess = (authenticatedUser) => {
+
     handleUpdateUser(authenticatedUser);
+
     setView("dashboard");
   };
 
+
+  // Logout -> Landing Page
+
   const handleLogout = () => {
+
     try {
       localStorage.removeItem("devsync_auth_user");
     } catch {
-      // ignore
+      // Ignore storage errors
     }
+
     setCurrentUser(null);
+
     setAuthMode("login");
-    setView("auth");
+
+    setView("landing");
   };
 
-  // Create Repository Handler
+
+  // ==========================================
+  // 7. CREATE REPOSITORY
+  // ==========================================
+
   const handleCreateProject = (newRepo) => {
+
     const updated = [newRepo, ...projects];
+
     setProjects(updated);
-    try {
-      localStorage.setItem("devsync_projects", JSON.stringify(updated));
-    } catch {}
 
-    // Initialize starter files specifically for this repository
+    try {
+      localStorage.setItem(
+        "devsync_projects",
+        JSON.stringify(updated)
+      );
+    } catch {
+      // Ignore storage errors
+    }
+
+
+    // Initialize starter files
+
     const initialFiles = getInitialFilesForProject(newRepo);
-    const updatedMap = { ...projectFilesMap, [newRepo.id]: initialFiles };
+
+    const updatedMap = {
+      ...projectFilesMap,
+      [newRepo.id]: initialFiles
+    };
+
     setProjectFilesMap(updatedMap);
+
     try {
-      localStorage.setItem("devsync_project_files_map", JSON.stringify(updatedMap));
-    } catch {}
+      localStorage.setItem(
+        "devsync_project_files_map",
+        JSON.stringify(updatedMap)
+      );
+    } catch {
+      // Ignore storage errors
+    }
   };
 
-  // Invite Teammate Handler
+
+  // ==========================================
+  // 8. INVITE TEAMMATE
+  // ==========================================
+
   const handleInviteTeammate = (newInvite) => {
+
     const updated = [newInvite, ...invitations];
+
     setInvitations(updated);
+
     try {
-      localStorage.setItem("devsync_invitations", JSON.stringify(updated));
-    } catch {}
+      localStorage.setItem(
+        "devsync_invitations",
+        JSON.stringify(updated)
+      );
+    } catch {
+      // Ignore storage errors
+    }
   };
 
-  // Accept Project Invitation Handler
+
+  // ==========================================
+  // 9. ACCEPT PROJECT INVITATION
+  // ==========================================
+
   const handleAcceptInvite = (inv) => {
-    // 1. Mark invite accepted
+
+    // Mark invitation as accepted
+
     const updatedInvites = invitations.map((i) =>
-      i.id === inv.id ? { ...i, status: "accepted" } : i
+      i.id === inv.id
+        ? { ...i, status: "accepted" }
+        : i
     );
+
     setInvitations(updatedInvites);
 
-    // 2. Add collaborator to the project
+
+    // Add collaborator to project
+
     let updatedProjects = [...projects];
-    const projectIndex = updatedProjects.findIndex((p) => p.id === inv.projectId);
+
+    const projectIndex = updatedProjects.findIndex(
+      (p) => p.id === inv.projectId
+    );
+
 
     const isJoinRequest = inv.type === "join_request";
+
+
     const collaboratorToAdd = isJoinRequest
       ? {
           id: inv.fromUserId,
           name: inv.fromUserName,
           username: inv.fromUsername,
           role: "Collaborator",
-          avatarColor: inv.fromUserAvatar || "#8B5CF6",
+          avatarColor: inv.fromUserAvatar || "#8B5CF6"
         }
       : {
           id: currentUser.id,
           name: currentUser.name,
-          username: currentUser.username || currentUser.name.toLowerCase(),
+          username:
+            currentUser.username ||
+            currentUser.name.toLowerCase(),
           role: inv.role || "Collaborator",
-          avatarColor: currentUser.avatarColor || "#8B5CF6",
+          avatarColor: currentUser.avatarColor || "#8B5CF6"
         };
 
+
     if (projectIndex >= 0) {
+
       const targetProj = updatedProjects[projectIndex];
+
       const hasMember = targetProj.collaborators?.some(
-        (c) => c.username === collaboratorToAdd.username || (collaboratorToAdd.id && c.id === collaboratorToAdd.id)
+        (c) =>
+          c.username === collaboratorToAdd.username ||
+          (
+            collaboratorToAdd.id &&
+            c.id === collaboratorToAdd.id
+          )
       );
+
+
       if (!hasMember) {
-        targetProj.collaborators = [...(targetProj.collaborators || []), collaboratorToAdd];
-        updatedProjects[projectIndex] = { ...targetProj };
+
+        targetProj.collaborators = [
+          ...(targetProj.collaborators || []),
+          collaboratorToAdd
+        ];
+
+        updatedProjects[projectIndex] = {
+          ...targetProj
+        };
       }
+
     } else if (!isJoinRequest) {
-      // If project wasn't previously in list, create shared entry
+
+      // Create shared project entry if it doesn't exist
+
       updatedProjects.unshift({
+
         id: inv.projectId,
+
         name: inv.projectName,
-        slug: inv.projectName.toLowerCase().replace(/[^a-z0-9-_]/g, "-"),
-        description: inv.projectDescription || "Shared collaborative project",
+
+        slug: inv.projectName
+          .toLowerCase()
+          .replace(/[^a-z0-9-_]/g, "-"),
+
+        description:
+          inv.projectDescription ||
+          "Shared collaborative project",
+
         language: "Python / Node.js",
+
         visibility: "private",
+
         defaultBranch: "main",
+
         ownerId: inv.fromUserId,
+
         ownerName: inv.fromUserName,
+
         ownerUsername: inv.fromUsername,
+
         collaborators: [
           {
             id: inv.fromUserId,
             name: inv.fromUserName,
             username: inv.fromUsername,
             role: "Owner",
-            avatarColor: "#6366F1",
+            avatarColor: "#6366F1"
           },
-          newCollaborator
+
+          // Fixed: use collaboratorToAdd
+          collaboratorToAdd
         ],
+
         updatedAt: "Just now",
-        stars: 3,
+
+        stars: 3
+
       });
     }
 
+
     setProjects(updatedProjects);
 
+
     try {
-      localStorage.setItem("devsync_invitations", JSON.stringify(updatedInvites));
-      localStorage.setItem("devsync_projects", JSON.stringify(updatedProjects));
-    } catch {}
+
+      localStorage.setItem(
+        "devsync_invitations",
+        JSON.stringify(updatedInvites)
+      );
+
+      localStorage.setItem(
+        "devsync_projects",
+        JSON.stringify(updatedProjects)
+      );
+
+    } catch {
+      // Ignore storage errors
+    }
   };
 
-  // Decline Invitation Handler
+
+  // ==========================================
+  // 10. DECLINE INVITATION
+  // ==========================================
+
   const handleDeclineInvite = (invId) => {
+
     const updatedInvites = invitations.map((i) =>
-      i.id === invId ? { ...i, status: "declined" } : i
+      i.id === invId
+        ? { ...i, status: "declined" }
+        : i
     );
+
     setInvitations(updatedInvites);
+
     try {
-      localStorage.setItem("devsync_invitations", JSON.stringify(updatedInvites));
-    } catch {}
+      localStorage.setItem(
+        "devsync_invitations",
+        JSON.stringify(updatedInvites)
+      );
+    } catch {
+      // Ignore storage errors
+    }
   };
 
-  // Launch Editor on a specific project
+
+  // ==========================================
+  // 11. OPEN PROJECT WORKSPACE
+  // ==========================================
+
   const handleOpenWorkspace = (project) => {
+
     setActiveProject(project);
-    const files = projectFilesMap[project.id] || getInitialFilesForProject(project);
+
+    const files =
+      projectFilesMap[project.id] ||
+      getInitialFilesForProject(project);
+
     setSelectedFile(files[0] || null);
+
     setSelectedSymbol(files[0]?.symbols?.[0] || null);
+
     setView("workspace");
   };
 
-  // Create New File in Active Project
+
+  // ==========================================
+  // 12. CREATE NEW FILE
+  // ==========================================
+
   const handleCreateFile = (filePath) => {
+
     if (!activeProject) return;
-    const ext = filePath.split(".").pop().toLowerCase();
+
+    const ext = filePath
+      .split(".")
+      .pop()
+      .toLowerCase();
+
+
     let language = "javascript";
+
+
     if (ext === "py") language = "python";
     else if (ext === "ts" || ext === "tsx") language = "typescript";
     else if (ext === "json") language = "json";
@@ -261,90 +516,230 @@ export function App() {
     else if (ext === "rs") language = "rust";
     else if (ext === "go") language = "go";
 
+
     let initialCode = "";
+
+
     if (language === "python") {
-      initialCode = `def main():\n    print("Running ${filePath}")\n\nif __name__ == "__main__":\n    main()\n`;
-    } else if (language === "typescript" || language === "javascript") {
-      initialCode = `export function main() {\n  console.log("Running ${filePath}");\n}\n`;
+
+      initialCode =
+        `def main():\n` +
+        `    print("Running ${filePath}")\n\n` +
+        `if __name__ == "__main__":\n` +
+        `    main()\n`;
+
+    } else if (
+      language === "typescript" ||
+      language === "javascript"
+    ) {
+
+      initialCode =
+        `export function main() {\n` +
+        `  console.log("Running ${filePath}");\n` +
+        `}\n`;
+
     } else if (language === "markdown") {
+
       const fileName = filePath.split("/").pop();
-      initialCode = `# ${fileName}\n\nProject documentation\n`;
+
+      initialCode =
+        `# ${fileName}\n\n` +
+        `Project documentation\n`;
+
     } else if (language === "json") {
-      initialCode = `{\n  "name": "${filePath}"\n}\n`;
+
+      initialCode =
+        `{\n` +
+        `  "name": "${filePath}"\n` +
+        `}\n`;
+
     } else {
+
       initialCode = `// ${filePath}\n`;
     }
 
-    const symbols = extractSymbolsFromFile(filePath, initialCode, language);
+
+    const symbols = extractSymbolsFromFile(
+      filePath,
+      initialCode,
+      language
+    );
+
 
     const newFileObj = {
       filePath,
       language,
       code: initialCode,
-      symbols,
+      symbols
     };
 
-    const existingFiles = projectFilesMap[activeProject.id] || getInitialFilesForProject(activeProject);
-    const updated = [newFileObj, ...existingFiles.filter((f) => f.filePath !== filePath)];
 
-    const updatedMap = { ...projectFilesMap, [activeProject.id]: updated };
+    const existingFiles =
+      projectFilesMap[activeProject.id] ||
+      getInitialFilesForProject(activeProject);
+
+
+    const updated = [
+      newFileObj,
+      ...existingFiles.filter(
+        (f) => f.filePath !== filePath
+      )
+    ];
+
+
+    const updatedMap = {
+      ...projectFilesMap,
+      [activeProject.id]: updated
+    };
+
+
     setProjectFilesMap(updatedMap);
+
     try {
-      localStorage.setItem("devsync_project_files_map", JSON.stringify(updatedMap));
-    } catch {}
+      localStorage.setItem(
+        "devsync_project_files_map",
+        JSON.stringify(updatedMap)
+      );
+    } catch {
+      // Ignore storage errors
+    }
+
 
     setSelectedFile(newFileObj);
+
     setSelectedSymbol(symbols[0] || null);
   };
 
-  // Create New Folder in Active Project
+
+  // ==========================================
+  // 13. CREATE NEW FOLDER
+  // ==========================================
+
   const handleCreateFolder = (folderName) => {
+
     if (!activeProject) return;
+
     const placeholderPath = `${folderName}/README.md`;
+
     handleCreateFile(placeholderPath);
   };
 
-  // Delete File from Active Project
+
+  // ==========================================
+  // 14. DELETE FILE
+  // ==========================================
+
   const handleDeleteFile = (filePath) => {
+
     if (!activeProject) return;
-    const existingFiles = projectFilesMap[activeProject.id] || getInitialFilesForProject(activeProject);
-    const updated = existingFiles.filter((f) => f.filePath !== filePath);
-    const updatedMap = { ...projectFilesMap, [activeProject.id]: updated };
+
+
+    const existingFiles =
+      projectFilesMap[activeProject.id] ||
+      getInitialFilesForProject(activeProject);
+
+
+    const updated = existingFiles.filter(
+      (f) => f.filePath !== filePath
+    );
+
+
+    const updatedMap = {
+      ...projectFilesMap,
+      [activeProject.id]: updated
+    };
+
+
     setProjectFilesMap(updatedMap);
+
     try {
-      localStorage.setItem("devsync_project_files_map", JSON.stringify(updatedMap));
-    } catch {}
+      localStorage.setItem(
+        "devsync_project_files_map",
+        JSON.stringify(updatedMap)
+      );
+    } catch {
+      // Ignore storage errors
+    }
+
 
     if (selectedFile?.filePath === filePath) {
+
       setSelectedFile(updated[0] || null);
-      setSelectedSymbol(updated[0]?.symbols?.[0] || null);
+
+      setSelectedSymbol(
+        updated[0]?.symbols?.[0] || null
+      );
     }
   };
 
-  // Update File Code when typing in Monaco Editor
+
+  // ==========================================
+  // 15. UPDATE FILE CODE
+  // ==========================================
+
   const handleUpdateFileCode = (filePath, newCode) => {
+
     if (!activeProject || !filePath) return;
-    const existingFiles = projectFilesMap[activeProject.id] || getInitialFilesForProject(activeProject);
+
+
+    const existingFiles =
+      projectFilesMap[activeProject.id] ||
+      getInitialFilesForProject(activeProject);
+
+
     const updated = existingFiles.map((f) => {
+
       if (f.filePath === filePath) {
-        const symbols = extractSymbolsFromFile(filePath, newCode, f.language);
-        return { ...f, code: newCode, symbols };
+
+        const symbols = extractSymbolsFromFile(
+          filePath,
+          newCode,
+          f.language
+        );
+
+        return {
+          ...f,
+          code: newCode,
+          symbols
+        };
       }
+
       return f;
     });
 
-    const updatedMap = { ...projectFilesMap, [activeProject.id]: updated };
+
+    const updatedMap = {
+      ...projectFilesMap,
+      [activeProject.id]: updated
+    };
+
+
     setProjectFilesMap(updatedMap);
+
     try {
-      localStorage.setItem("devsync_project_files_map", JSON.stringify(updatedMap));
-    } catch {}
+      localStorage.setItem(
+        "devsync_project_files_map",
+        JSON.stringify(updatedMap)
+      );
+    } catch {
+      // Ignore storage errors
+    }
+
 
     if (selectedFile?.filePath === filePath) {
-      setSelectedFile((prev) => ({ ...prev, code: newCode }));
+
+      setSelectedFile((prev) => ({
+        ...prev,
+        code: newCode
+      }));
     }
   };
 
-  // WebSocket custom hook
+
+  // ==========================================
+  // 16. WEBSOCKET CONNECTION
+  // ==========================================
+
   const {
     isConnected,
     locks,
@@ -356,36 +751,99 @@ export function App() {
     releaseLock,
     requestHandover,
     respondHandover,
-    refreshState,
-  } = useDevSyncSocket("ws://localhost:8080", currentUser);
+    refreshState
+  } = useDevSyncSocket(
+    "ws://localhost:8080",
+    currentUser
+  );
+
+
+  // ==========================================
+  // 17. LOCK MANAGEMENT
+  // ==========================================
 
   const handleOpenAcquire = (file, symbol) => {
+
     setSelectedFile(file);
+
     setSelectedSymbol(symbol);
+
     setModalMode("ACQUIRE");
+
     setModalOpen(true);
   };
+
 
   const handleOpenHandover = (symbol, activeLock) => {
+
     setSelectedSymbol(symbol);
+
     setTargetLock(activeLock);
+
     setModalMode("REQUEST_HANDOVER");
+
     setModalOpen(true);
   };
 
+
+  // ==========================================
+  // 18. SYMBOL NAVIGATION
+  // ==========================================
+
   const handleNavigateToSymbol = (symbolPath) => {
+
     for (const f of currentFiles) {
-      const found = f.symbols?.find((s) => s.symbolPath === symbolPath);
+
+      const found = f.symbols?.find(
+        (s) => s.symbolPath === symbolPath
+      );
+
       if (found) {
+
         setSelectedFile(f);
+
         setSelectedSymbol(found);
+
         break;
       }
     }
   };
 
-  // If not authenticated or explicitly navigating to auth, lock to Auth screen
+
+  // ==========================================
+  // 19. LANDING PAGE
+  // ==========================================
+
+  // IMPORTANT:
+  // This condition must come AFTER all hooks and handlers.
+  // New visitors see Hero first.
+
+  if (!currentUser && view === "landing") {
+
+    return (
+      <Hero
+
+        onGetStarted={() => {
+          setAuthMode("signup");
+          setView("auth");
+        }}
+
+        onSignIn={() => {
+          setAuthMode("login");
+          setView("auth");
+        }}
+
+      />
+    );
+  }
+
+
+  // ==========================================
+  // 20. AUTHENTICATION PAGE
+  // ==========================================
+
   if (!currentUser || view === "auth") {
+
     return (
       <AuthPage
         initialMode={authMode}
@@ -395,8 +853,13 @@ export function App() {
     );
   }
 
-  // If viewing Projects Dashboard (default destination after signup / login!)
+
+  // ==========================================
+  // 21. DASHBOARD
+  // ==========================================
+
   if (view === "dashboard") {
+
     return (
       <Dashboard
         currentUser={currentUser}
@@ -414,8 +877,13 @@ export function App() {
     );
   }
 
-  // If viewing Profile Screen
+
+  // ==========================================
+  // 22. PROFILE PAGE
+  // ==========================================
+
   if (view === "profile") {
+
     return (
       <ProfilePage
         currentUser={currentUser}
@@ -430,9 +898,17 @@ export function App() {
     );
   }
 
+
+  // ==========================================
+  // 23. MAIN DEVSYNC WORKSPACE
+  // ==========================================
+
   return (
+
     <div className="flex flex-col h-screen w-screen overflow-hidden bg-[#0F172A] text-slate-100 font-sans">
-      {/* 1. Global Header with WebSocket status, lock telemetry, and developer switcher */}
+
+      {/* GLOBAL HEADER */}
+
       <Header
         isConnected={isConnected}
         currentUser={currentUser}
@@ -450,41 +926,82 @@ export function App() {
         currentView={view}
       />
 
-      {/* Incoming Handover Notification Banner */}
+
+      {/* INCOMING HANDOVER NOTIFICATION */}
+
       <IncomingHandoverBanner
         alert={handoverAlert}
+
         onAccept={(requestId, symbolPath, note) => {
-          respondHandover(requestId, symbolPath, true, note);
+          respondHandover(
+            requestId,
+            symbolPath,
+            true,
+            note
+          );
         }}
+
         onDecline={(requestId, symbolPath) => {
-          respondHandover(requestId, symbolPath, false);
+          respondHandover(
+            requestId,
+            symbolPath,
+            false
+          );
         }}
       />
 
-      {/* Collision / Error Toast */}
+
+      {/* COLLISION / ERROR TOAST */}
+
       {lastError && (
+
         <div className="bg-rose-950/90 border-b border-rose-500 px-4 py-2 flex items-center justify-between text-xs text-rose-200 animate-in slide-in-from-top-1">
+
           <div className="flex items-center space-x-2">
+
             <AlertCircle className="h-4 w-4 text-rose-400" />
-            <span className="font-semibold">{lastError.type}:</span>
-            <span>
-              {lastError.reason === "ALREADY_LOCKED"
-                ? `Conflict: Symbol is already locked by ${lastError.holder?.ownerName || 'another developer'}`
-                : lastError.reason === "ALREADY_HOLDING_LOCK"
-                ? `Policy: You already hold a lock on another symbol. Release it first or wait for expiration.`
-                : lastError.message || lastError.reason || "Operation failed"}
+
+            <span className="font-semibold">
+              {lastError.type}:
             </span>
+
+            <span>
+
+              {lastError.reason === "ALREADY_LOCKED"
+
+                ? `Conflict: Symbol is already locked by ${
+                    lastError.holder?.ownerName ||
+                    "another developer"
+                  }`
+
+                : lastError.reason === "ALREADY_HOLDING_LOCK"
+
+                ? "Policy: You already hold a lock on another symbol. Release it first or wait for expiration."
+
+                : lastError.message ||
+                  lastError.reason ||
+                  "Operation failed"
+
+              }
+
+            </span>
+
           </div>
-          <button 
+
+
+          <button
             onClick={() => setLastError(null)}
             className="text-rose-400 hover:text-white p-0.5 rounded cursor-pointer"
           >
             <X className="h-3.5 w-3.5" />
           </button>
+
         </div>
       )}
 
-      {/* Dependency-Aware Call Graph Alert (Abstract Primitive #3) */}
+
+      {/* CALL GRAPH ALERT */}
+
       <CallGraphAlert
         selectedSymbol={selectedSymbol}
         locks={locks}
@@ -494,30 +1011,39 @@ export function App() {
         onNavigateToSymbol={handleNavigateToSymbol}
       />
 
-      {/* 2. Main High-Density Workspace Grid */}
+
+      {/* MAIN WORKSPACE GRID */}
+
       <div className="flex-1 flex overflow-hidden">
-        {/* Left: Symbol & File Hierarchy Tree with Create File/Folder capability */}
+
+        {/* LEFT: SYMBOL TREE */}
+
         <SymbolTree
           files={currentFiles}
           activeProject={activeProject}
           locks={locks}
           selectedFile={selectedFile}
           selectedSymbol={selectedSymbol}
+
           onSelectFile={(f) => {
             setSelectedFile(f);
             setSelectedSymbol(f.symbols?.[0] || null);
           }}
+
           onSelectSymbol={(f, s) => {
             setSelectedFile(f);
             setSelectedSymbol(s);
           }}
+
           onCreateFile={handleCreateFile}
           onCreateFolder={handleCreateFolder}
           onDeleteFile={handleDeleteFile}
           currentUser={currentUser}
         />
 
-        {/* Center: Monaco Editor & Gutter Lock Canvas */}
+
+        {/* CENTER: MONACO EDITOR */}
+
         <CodeCanvas
           file={selectedFile}
           selectedSymbol={selectedSymbol}
@@ -526,11 +1052,20 @@ export function App() {
           onOpenAcquire={handleOpenAcquire}
           onOpenHandover={handleOpenHandover}
           onReleaseLock={releaseLock}
-          onUpdateCode={(newCode) => handleUpdateFileCode(selectedFile?.filePath, newCode)}
+
+          onUpdateCode={(newCode) =>
+            handleUpdateFileCode(
+              selectedFile?.filePath,
+              newCode
+            )
+          }
         />
+
       </div>
 
-      {/* 3. Bottom Drawer: xterm.js Sandbox Terminal & Protocol Telemetry */}
+
+      {/* BOTTOM DRAWER / TERMINAL */}
+
       <BottomDrawer
         events={events}
         activeFile={selectedFile}
@@ -538,7 +1073,9 @@ export function App() {
         files={currentFiles}
       />
 
-      {/* 4. Action / Handover Modal */}
+
+      {/* HANDOVER MODAL */}
+
       <HandoverModal
         isOpen={modalOpen}
         mode={modalMode}
@@ -546,11 +1083,17 @@ export function App() {
         symbol={selectedSymbol}
         activeLock={targetLock}
         currentUser={currentUser}
+
         onClose={() => setModalOpen(false)}
+
         onAcquire={acquireLock}
+
         onRequestHandover={requestHandover}
       />
+
     </div>
   );
 }
+
+
 export default App;
